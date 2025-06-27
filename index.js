@@ -2,33 +2,37 @@ const express = require("express");
 const { Client, middleware } = require("@line/bot-sdk");
 const { OpenAI } = require("openai");
 const axios = require("axios");
-const { MongoClient } = require("mongodb"); 
 const { genreMap, budgetMap, keywordSuggestions } = require("./hotpepper_keyword_map");
 
-const mongoUri = "mongodb+srv://gi19213:daiya0821@cluster0.kuapvuz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const mongoClient = new MongoClient(mongoUri);
+const { MongoClient } = require("mongodb");
+require("dotenv").config(); // ← ここが抜けていた ✅
+
+const mongoClient = new MongoClient(process.env.MONGO_URI);
 let userDB;
 
-mongoClient.connect().then(client => {
-  userDB = client.db("linebot").collection("users");
-});
+mongoClient.connect()
+  .then(client => {
+    console.log("✅ MongoDB接続成功");
+    userDB = client.db("linebot").collection("users");
+  })
+  .catch(err => {
+    console.error("❌ MongoDB接続エラー:", err);
+  });
+
 
 const config = {
   channelAccessToken: "T0gSzCVfGWq0ch/ZFLvKkmem36ftZRKKiET+O5TL9cvAOZMuk3fAMaiyBNXyHI6i54lWB7hdC26sZbvbhZEBxB/Ii8Ccubi+Pdp39aottoHR9idnXYiOe8RVPJ/dpefFb7cl24+NZykQrFMxi5D+lAdB04t89/1O/w1cDnyilFU=",
   channelSecret: "eaa34dc5f05722f978257f1f045f0b35",
 };
 
-const OPENAI_API_KEY = "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";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const HOTPEPPER_API_KEY = "743305736e640b97";
 
 const app = express();
-app.use(middleware(config));
 app.use(express.json());
 
 const client = new Client(config);
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-const sessionStore = {}; // ✅ ユーザーごとのセッション記録用
 
 function extractShopNames(text) {
   return text.match(/店名: (.+)/g)?.map(line => line.replace("店名: ", "").trim()) || [];
@@ -53,7 +57,7 @@ async function fetchShops(keyword, genreCode = "", budgetCode = "") {
   return all;
 }
 
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
     await Promise.all(events.map(async (event) => {
@@ -61,19 +65,33 @@ app.post("/webhook", async (req, res) => {
         const userInput = event.message.text;
         const userId = event.source.userId;
 
-        // ⬇️ 初回無料＋課金判定（MongoDBからユーザー状態を確認）
-let user = await userDB.findOne({ lineUserId: userId });
-if (!user) {
-  user = { lineUserId: userId, usedFree: false, subscribed: false };
-  await userDB.insertOne({ ...user, createdAt: new Date() });
-}
-if (!user.usedFree) {
-  await userDB.updateOne({ lineUserId: userId }, { $set: { usedFree: true, updatedAt: new Date() } });
-} else if (!user.subscribed) {
-  return client.replyMessage(event.replyToken, {
-    type: "text",
-    text: "2回目以降のご利用には月額登録が必要です。\n以下よりご登録ください👇\nhttps://buy.stripe.com/xxxxxxxx"
+const userDoc = await userDB.findOne({ userId });
+
+if (!userDoc) {
+  // 初回ユーザー → 登録して1回目無料
+  await userDB.insertOne({
+    userId,
+    introCount: 1,
+    subscribed: false,
+    previousStructure: null,
+    allShops: [],
+    shown: [],
+    original: userInput
   });
+  console.log("🆕 新規ユーザー登録：1回目無料で続行");
+} else if (userDoc.subscribed) {
+  console.log("✅ 課金済みユーザー：続行");
+} else if (userDoc.introCount >= 1) {
+  // ⛔ 無料回数超え → Stripe課金誘導
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\nhttps://your-stripe-checkout-link"
+  });
+  return;
+} else {
+  // 無料2回目としてカウントアップ
+  await userDB.updateOne({ userId }, { $inc: { introCount: 1 } });
+  console.log("🟡 無料利用2回目");
 }
 
 // ✅ 途中希望（もっと静か・おしゃれ・個室など）を初回取得済みショップから再選出する形式
