@@ -169,6 +169,9 @@ if (
 
   const previous = sessionStore[userId];
 const prev = sessionStore[userId].previousStructure || {};
+const prevLocation = prevStruct.location || "";  
+const prevGenre    = prevStruct.genre    || ""; 
+
 
   // 🔍 今回の追加希望を抽出
   const gptExtract = await openai.chat.completions.create({
@@ -209,7 +212,14 @@ const prev = sessionStore[userId].previousStructure || {};
   };
 
 const shopList = previous.allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n"); // ← 再検索せず、前回と同じ店リスト
-const prompt = `前回の希望: ${previous.original}\n今回の追加希望: ${userInput}\n\n上記をふまえて、以下のお店一覧から1件を選び、理由を添えてください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+const prompt = 
+  `前回の検索場所: ${prevLocation}\n` +
+   `前回の検索ジャンル: ${prevGenre}\n` +
+   `（ジャンルは必ず「${prevGenre}」の範囲で選んでください）\n` +
+   `追加のご希望: ${userInput}\n\n` +
+   `上記をもとに、以下の店舗リストから1件だけ選び、理由を添えてください。\n` +
+  `形式：\n- 店名: ○○○\n- 理由: ○○○`;
+
 
   const gptPick = await openai.chat.completions.create({
     model: "gpt-4",
