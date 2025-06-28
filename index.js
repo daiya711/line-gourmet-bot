@@ -1,14 +1,21 @@
 require("dotenv").config(); // ← ここが抜けていた ✅
 console.log("✅ MONGO_URI:", process.env.MONGO_URI);
 
-
 const express = require("express");
 const { Client, middleware } = require("@line/bot-sdk");
 const { OpenAI } = require("openai");
 const axios = require("axios");
 const { genreMap, budgetMap, keywordSuggestions } = require("./hotpepper_keyword_map");
-
 const { MongoClient } = require("mongodb");
+
+const app = express();
+
+// ✅ LINEの署名検証に必要な rawBody を先にセット
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let userDB;
@@ -22,7 +29,6 @@ mongoClient.connect()
     console.error("❌ MongoDB接続エラー:", err);
   });
 
-
 const config = {
   channelAccessToken: "T0gSzCVfGWq0ch/ZFLvKkmem36ftZRKKiET+O5TL9cvAOZMuk3fAMaiyBNXyHI6i54lWB7hdC26sZbvbhZEBxB/Ii8Ccubi+Pdp39aottoHR9idnXYiOe8RVPJ/dpefFb7cl24+NZykQrFMxi5D+lAdB04t89/1O/w1cDnyilFU=",
   channelSecret: "eaa34dc5f05722f978257f1f045f0b35",
@@ -30,16 +36,7 @@ const config = {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const HOTPEPPER_API_KEY = "743305736e640b97";
-
-const app = express();
-app.use(express.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-
 const client = new Client(config);
-
 
 function extractShopNames(text) {
   return text.match(/店名: (.+)/g)?.map(line => line.replace("店名: ", "").trim()) || [];
@@ -64,7 +61,7 @@ async function fetchShops(keyword, genreCode = "", budgetCode = "") {
   return all;
 }
 
-app.post("/webhook", middleware(config), async (req, res) => {
+app.post("/webhook", express.raw({ type: "application/json" }), middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
     await Promise.all(events.map(async (event) => {
