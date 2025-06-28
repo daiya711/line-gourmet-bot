@@ -34,9 +34,10 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const HOTPEPPER_API_KEY = "743305736e640b97";
-const client = new Client(config);
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+const HOTPEPPER_API_KEY = process.env.HOTPEPPER_API_KEY;
 
 function extractShopNames(text) {
   return text.match(/店名: (.+)/g)?.map(line => line.replace("店名: ", "").trim()) || [];
