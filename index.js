@@ -158,7 +158,7 @@ if (
 )
  {
   const previous = sessionStore[userId];
-  const prev = sessionStore[userId].previousStructure;
+const prev = sessionStore[userId].previousStructure || {};
 
   // 🔍 今回の追加希望を抽出
   const gptExtract = await openai.chat.completions.create({
