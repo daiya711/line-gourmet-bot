@@ -30,8 +30,8 @@ mongoClient.connect()
   });
 
 const config = {
-  channelAccessToken: "T0gSzCVfGWq0ch/ZFLvKkmem36ftZRKKiET+O5TL9cvAOZMuk3fAMaiyBNXyHI6i54lWB7hdC26sZbvbhZEBxB/Ii8Ccubi+Pdp39aottoHR9idnXYiOe8RVPJ/dpefFb7cl24+NZykQrFMxi5D+lAdB04t89/1O/w1cDnyilFU=",
-  channelSecret: "eaa34dc5f05722f978257f1f045f0b35",
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
