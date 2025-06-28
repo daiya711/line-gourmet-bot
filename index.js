@@ -1,3 +1,4 @@
+
 require("dotenv").config(); // ← ここが抜けていた ✅
 console.log("✅ MONGO_URI:", process.env.MONGO_URI);
 
@@ -33,6 +34,10 @@ const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
+
+const client = new Client(config); // ✅ LINE SDKのクライアント初期化
+const sessionStore = {}; // ✅ ユーザーごとのセッション記録用（メモリ保存）
+
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -716,7 +721,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Bot is running on port ${PORT}`);
 });
-
-
-
-
