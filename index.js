@@ -109,6 +109,9 @@ const userDoc = await userDB.findOne({ userId });
 if (
   (
     userInput.includes("もっと") ||
+      userInput.includes("もう少し") ||     
+      userInput.includes("もう") ||
+    userInput.includes("ちょっと") ||  
     userInput.includes("できる") ||
     userInput.includes("静か") ||
     userInput.includes("個室") ||
@@ -131,6 +134,10 @@ if (
     userInput.includes("子連れ") ||
     userInput.includes("駐車場") ||
     userInput.includes("深夜") ||
+    userInput.includes("使える") ||
+    userInput.includes("同じ") ||
+    userInput.includes("条件") ||
+    userInput.includes("場所") ||
     userInput.includes("ランチ") ||
     userInput.includes("ヘルシー") ||
     userInput.includes("健康志向") ||
@@ -157,6 +164,9 @@ if (
   sessionStore[userId]
 )
  {
+ 
+  console.log("🟢 【途中希望】ブロックに入りました:", userInput);
+
   const previous = sessionStore[userId];
 const prev = sessionStore[userId].previousStructure || {};
 
