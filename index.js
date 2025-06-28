@@ -1,3 +1,7 @@
+require("dotenv").config(); // ← ここが抜けていた ✅
+console.log("✅ MONGO_URI:", process.env.MONGO_URI);
+
+
 const express = require("express");
 const { Client, middleware } = require("@line/bot-sdk");
 const { OpenAI } = require("openai");
@@ -5,7 +9,6 @@ const axios = require("axios");
 const { genreMap, budgetMap, keywordSuggestions } = require("./hotpepper_keyword_map");
 
 const { MongoClient } = require("mongodb");
-require("dotenv").config(); // ← ここが抜けていた ✅
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let userDB;
@@ -29,7 +32,11 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const HOTPEPPER_API_KEY = "743305736e640b97";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 const client = new Client(config);
 
