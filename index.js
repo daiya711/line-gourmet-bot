@@ -77,35 +77,35 @@ app.post("/webhook", express.raw({ type: "application/json" }), middleware(confi
 
 const userDoc = await userDB.findOne({ userId });
 
-// if (!userDoc) {
-//   // 初回ユーザー → 登録して1回目無料
-//   await userDB.insertOne({
-//     userId,
-//     introCount: 1,
-//     subscribed: false,
-//     previousStructure: null,
-//     allShops: [],
-//     shown: [],
-//     original: userInput
-//   });
-//   console.log("🆕 新規ユーザー登録：1回目無料で続行");
-// } else if (userDoc.subscribed) {
-//   console.log("✅ 課金済みユーザー：続行");
-// } else if (userDoc.introCount >= 1) {
-//   // ⛔ 無料回数超え → Stripe課金誘導
-//   await client.replyMessage(event.replyToken, {
-//     type: "text",
-//     text: "🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\nhttps://your-stripe-checkout-link"
-//   });
-//   return;
-// } 
-// else {
-//   // 無料2回目としてカウントアップ
-//   await userDB.updateOne({ userId }, { $inc: { introCount: 1 } });
-//   console.log("🟡 無料利用2回目");
-// }
+if (!userDoc) {
+  // 初回ユーザー → 登録して1回目無料
+  await userDB.insertOne({
+    userId,
+    introCount: 1,
+    subscribed: false,
+    previousStructure: null,
+    allShops: [],
+    shown: [],
+    original: userInput
+  });
+  console.log("🆕 新規ユーザー登録：1回目無料で続行");
+} else if (userDoc.subscribed) {
+  console.log("✅ 課金済みユーザー：続行");
+} else if (userDoc.introCount >= 1) {
+  // ⛔ 無料回数超え → Stripe課金誘導
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+text: "🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\nhttps://buy.stripe.com/eVq9AS2224B6d31ejM33W00"
+  });
+  return;
+} 
+else {
+  // 無料2回目としてカウントアップ
+  await userDB.updateOne({ userId }, { $inc: { introCount: 1 } });
+  console.log("🟡 無料利用2回目");
+}
 
-// ✅ 途中希望（もっと静か・おしゃれ・個室など）を初回取得済みショップから再選出する形式
+ 途中希望もっと静か・おしゃれ・個室などを初回取得済みショップから再選出する形式
 if (
   (
     userInput.includes("もっと") ||
