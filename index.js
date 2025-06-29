@@ -707,17 +707,14 @@ const itemMatch = response.match(/【おすすめの一品】\s*([\s\S]*)/);
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
+// ✅ stripe webhookのルートだけ express.raw を使用するように修正
 app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
 
   try {
-    // Stripe署名検証（環境変数名はSTRIPE_ENDPOINT_SECRETを使用）
-    event = stripe.webhooks.constructEvent(
-      req.body, 
-      sig, 
-      process.env.STRIPE_ENDPOINT_SECRET
-    );
+    // 署名検証に req.bodyをそのまま渡す（raw bufferのまま）
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
   } catch (err) {
     console.error("❌ Stripe署名検証エラー:", err);
     return res.status(400).send(`Webhook Error: ${err.message}`);
