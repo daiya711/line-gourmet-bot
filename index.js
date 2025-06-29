@@ -705,36 +705,47 @@ const itemMatch = response.match(/【おすすめの一品】\s*([\s\S]*)/);
   }
 });
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
   try {
-    const event = JSON.parse(req.body.toString());
-
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const lineUserId = session.metadata?.lineUserId;
-
-      if (lineUserId) {
-        await userDB.updateOne(
-          { lineUserId },
-          {
-            $set: {
-              subscribed: true,
-              stripeCustomerId: session.customer,
-              updatedAt: new Date()
-            }
-          },
-          { upsert: true }
-        );
-        console.log(`✅ ユーザー ${lineUserId} をsubscribed に更新しました`);
-      }
-    }
-
-    res.status(200).end();
+    // Stripe署名検証（環境変数名はSTRIPE_ENDPOINT_SECRETを使用）
+    event = stripe.webhooks.constructEvent(
+      req.body, 
+      sig, 
+      process.env.STRIPE_ENDPOINT_SECRET
+    );
   } catch (err) {
-    console.error("❌ Stripe Webhook エラー:", err);
-    res.status(500).end();
+    console.error("❌ Stripe署名検証エラー:", err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const lineUserId = session.metadata?.lineUserId;
+
+    if (lineUserId) {
+      await userDB.updateOne(
+        { userId: lineUserId },
+        {
+          $set: {
+            subscribed: true,
+            stripeCustomerId: session.customer,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      console.log(`✅ ユーザー ${lineUserId} をsubscribed に更新しました`);
+    }
+  }
+
+  res.status(200).end();
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
