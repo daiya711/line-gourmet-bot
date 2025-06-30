@@ -13,8 +13,6 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
-// ✅ グローバルで適用（JSON解析に必要）
-app.use(express.json());
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let userDB;
@@ -105,7 +103,7 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
 
 
 
-app.post("/webhook", middleware(config), async (req, res) => {
+app.post("/webhook", express.raw({ type: 'application/json' }), middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
     await Promise.all(events.map(async (event) => {
