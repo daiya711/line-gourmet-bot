@@ -40,6 +40,38 @@ const openai = new OpenAI({
 });
 const HOTPEPPER_API_KEY = process.env.HOTPEPPER_API_KEY;
 
+// ✅ StripeのCheckoutセッション作成エンドポイント（LINEユーザーIDをmetadataに含める）
+app.post("/create-checkout-session", express.json(), async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    console.log("Stripeへ渡すLINEユーザーID:", userId);
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [
+        {
+          price: "price_1Rc4DbCE2c7uO9vomtr7CWPk", // ← あなたの価格ID
+          quantity: 1,
+        },
+      ],
+      success_url: "https://line-gourmet-bot.onrender.com/success",
+      cancel_url: "https://line-gourmet-bot.onrender.com/cancel",
+      metadata: {
+        lineUserId: userId
+      },
+    });
+
+    // ✅ URLを返す（フロントやBotで使う）
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("❌ Stripeセッション作成エラー:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 function extractShopNames(text) {
   return text.match(/店名: (.+)/g)?.map(line => line.replace("店名: ", "").trim()) || [];
 }
@@ -111,6 +143,7 @@ app.post("/webhook", express.raw({ type: 'application/json' }), middleware(confi
         const userInput = event.message.text;
         const userId = event.source.userId;
 
+
 const userDoc = await userDB.findOne({ userId });
 
 if (!userDoc) {
@@ -148,7 +181,7 @@ if (!userDoc) {
 
   await client.replyMessage(event.replyToken, {
     type: "text",
-text: "🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\nhttps://buy.stripe.com/eVq9AS2224B6d31ejM33W00"
+text:  `🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\n${session.url}`
   });
   return;
 } 
@@ -157,6 +190,7 @@ else {
   await userDB.updateOne({ userId }, { $inc: { introCount: 1 } });
   console.log("🟡 無料利用2回目");
 }
+   
 
  途中希望もっと静か・おしゃれ・個室などを初回取得済みショップから再選出する形式
 if (
