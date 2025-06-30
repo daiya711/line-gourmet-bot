@@ -9,14 +9,12 @@ const axios = require("axios");
 const { genreMap, budgetMap, keywordSuggestions } = require("./hotpepper_keyword_map");
 const { MongoClient } = require("mongodb");
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 const app = express();
 
-// ✅ LINEの署名検証に必要な rawBody を先にセット
-app.use(express.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
+// ✅ グローバルで適用（JSON解析に必要）
+app.use(express.json());
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let userDB;
@@ -67,7 +65,47 @@ async function fetchShops(keyword, genreCode = "", budgetCode = "") {
   return all;
 }
 
-app.post("/webhook", express.raw({ type: "application/json" }), middleware(config), async (req, res) => {
+// ✅ stripe webhookのルートだけ express.raw を使用するように修正
+app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    // 署名検証に req.bodyをそのまま渡す（raw bufferのまま）
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
+  } catch (err) {
+    console.error("❌ Stripe署名検証エラー:", err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const lineUserId = session.metadata?.lineUserId;
+
+    if (lineUserId) {
+      await userDB.updateOne(
+        { userId: lineUserId },
+        {
+          $set: {
+            subscribed: true,
+            stripeCustomerId: session.customer,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      console.log(`✅ ユーザー ${lineUserId} をsubscribed に更新しました`);
+    }
+  }
+
+  res.status(200).end();
+});
+
+
+
+
+
+app.post("/webhook", middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
     await Promise.all(events.map(async (event) => {
@@ -705,43 +743,6 @@ const itemMatch = response.match(/【おすすめの一品】\s*([\s\S]*)/);
   }
 });
 
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-
-// ✅ stripe webhookのルートだけ express.raw を使用するように修正
-app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  let event;
-
-  try {
-    // 署名検証に req.bodyをそのまま渡す（raw bufferのまま）
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
-  } catch (err) {
-    console.error("❌ Stripe署名検証エラー:", err);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const lineUserId = session.metadata?.lineUserId;
-
-    if (lineUserId) {
-      await userDB.updateOne(
-        { userId: lineUserId },
-        {
-          $set: {
-            subscribed: true,
-            stripeCustomerId: session.customer,
-            updatedAt: new Date()
-          }
-        },
-        { upsert: true }
-      );
-      console.log(`✅ ユーザー ${lineUserId} をsubscribed に更新しました`);
-    }
-  }
-
-  res.status(200).end();
-});
 
 
 const PORT = process.env.PORT || 3000;
