@@ -129,6 +129,23 @@ if (!userDoc) {
   console.log("✅ 課金済みユーザー：続行");
 } else if (userDoc.introCount >= 1) {
   // ⛔ 無料回数超え → Stripe課金誘導
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    mode: "subscription",
+    line_items: [
+      {
+        price: "price_1Rc4DbCE2c7uO9vomtr7CWPk", // あなたのStripeの価格IDに置き換えてください
+        quantity: 1,
+      },
+    ],
+    success_url:  "https://line.me",
+    cancel_url:  "https://line.me",
+    metadata: {
+      lineUserId: userId // ← これが重要
+    }
+  });
+
   await client.replyMessage(event.replyToken, {
     type: "text",
 text: "🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\nhttps://buy.stripe.com/eVq9AS2224B6d31ejM33W00"
