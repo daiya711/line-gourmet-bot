@@ -262,6 +262,13 @@ if (
     userInput.includes("食べ放題") ||
     userInput.includes("喫煙") ||
     userInput.includes("禁煙") ||
+     userInput.includes("隠れ家") ||
+      userInput.includes("有名") ||
+       userInput.includes("知る人ぞ知る") ||
+        userInput.includes("有名") ||
+         userInput.includes("人気") ||
+          userInput.includes("行列") ||
+           userInput.includes("SNS") ||
     userInput.includes("分煙") ||
     userInput.includes("Wi-Fi") ||
     userInput.includes("老舗") ||
