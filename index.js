@@ -71,6 +71,29 @@ app.post("/create-checkout-session", express.json(), async (req, res) => {
   }
 });
 
+app.post("/create-portal-session", express.json(), async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    const user = await userDB.findOne({ userId });
+
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({ error: "Stripeの顧客IDが見つかりません" });
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: "https://line.me",
+    });
+
+    res.json({ url: portalSession.url });
+  } catch (err) {
+    console.error("❌ カスタマーポータルセッション作成エラー:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 function extractShopNames(text) {
   return text.match(/店名: (.+)/g)?.map(line => line.replace("店名: ", "").trim()) || [];
@@ -164,6 +187,17 @@ app.post("/webhook", express.raw({ type: 'application/json' }), middleware(confi
       if (event.type === "message" && event.message.type === "text") {
         const userInput = event.message.text;
         const userId = event.source.userId;
+
+ if (userInput.includes("解約") || userInput.includes("キャンセル") || userInput.includes("プラン変更")) {
+          const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
+          const portalUrl = response.data.url;
+
+          await client.replyMessage(event.replyToken, {
+            type: "text",
+            text: `🔧 サブスクリプションの解約やプラン変更は、以下のリンクから簡単に行えます。\n👇\n${portalUrl}`
+          });
+          return;
+        }
 
 
 const userDoc = await userDB.findOne({ userId });
