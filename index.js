@@ -492,6 +492,11 @@ if ((userInput.includes("違う") || userInput.includes("他")) && sessionStore[
     });
   }
 
+  const prevLocation = previous.previousStructure.location || "";
+const prevGenre = previous.previousStructure.genre || "";
+const prevKeyword = previous.previousStructure.keyword || "";
+
+
   const shopList = remaining.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
 await client.pushMessage(userId, {
   type: "text",
@@ -499,7 +504,14 @@ await client.pushMessage(userId, {
 });
 
 
-  const prompt = `ユーザーの希望は「${previous.original}」です。\n以下の残り候補から違う1件を選び、理由を添えてください。\n形式：\n- 店名: ○○\n- 理由: ○○`;
+
+const prompt = 
+`ユーザーの希望は「${previous.original}」です。
+最初に検索した場所は「${prevLocation}」、ジャンルは「${prevGenre}」、キーワードは「${prevKeyword}」です。
+必ずこれらの条件を踏まえ、以下の残り候補から違う1件を選び、理由を添えてください。
+形式：
+- 店名: ○○
+- 理由: ○○`;
 
   const gptRes = await openai.chat.completions.create({
     model: "gpt-4",
@@ -729,12 +741,12 @@ const itemMatch = response.match(/【おすすめの一品】\s*([\s\S]*)/);
   shop.generatedTags = gptTag.choices[0].message.content?.trim() || "#おすすめ";
 
 }
-
-        sessionStore[userId] = {
-          original: userInput,
-          allShops,
-          shown: selected.map(s => s.name)
-        };
+sessionStore[userId] = {
+  original: userInput,
+  allShops,
+  shown: selected.map(s => s.name),
+  previousStructure: { location, genre, keyword } // ← 初回検索の条件をここに明確に保存
+};
 
         if (selected.length === 0) {
           return client.replyMessage(event.replyToken, { type: "text", text: "条件に近いお店が見つかりませんでした🙏" });
