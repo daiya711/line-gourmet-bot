@@ -95,37 +95,59 @@ async function fetchShops(keyword, genreCode = "", budgetCode = "") {
   return all;
 }
 
-// ✅ stripe webhookのルートだけ express.raw を使用するように修正
 app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
 
   try {
-    // 署名検証に req.bodyをそのまま渡す（raw bufferのまま）
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
   } catch (err) {
     console.error("❌ Stripe署名検証エラー:", err);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const lineUserId = session.metadata?.lineUserId;
+  switch (event.type) {
+    case "checkout.session.completed":
+      const session = event.data.object;
+      const lineUserId = session.metadata?.lineUserId;
 
-    if (lineUserId) {
-      await userDB.updateOne(
-        { userId: lineUserId },
-        {
-          $set: {
-            subscribed: true,
-            stripeCustomerId: session.customer,
-            updatedAt: new Date()
+      if (lineUserId) {
+        await userDB.updateOne(
+          { userId: lineUserId },
+          {
+            $set: {
+              subscribed: true,
+              stripeCustomerId: session.customer,
+              updatedAt: new Date()
+            }
+          },
+          { upsert: true }
+        );
+        console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新しました`);
+      }
+      break;
+
+    case "customer.subscription.deleted":
+    case "customer.subscription.updated":
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+
+      if (subscription.status !== "active") {
+        await userDB.updateOne(
+          { stripeCustomerId: customerId },
+          {
+            $set: {
+              subscribed: false,
+              updatedAt: new Date()
+            }
           }
-        },
-        { upsert: true }
-      );
-      console.log(`✅ ユーザー ${lineUserId} をsubscribed に更新しました`);
-    }
+        );
+        console.log(`🚫 ユーザー（Customer ID: ${customerId}）をunsubscribedに更新しました`);
+      }
+      break;
+
+    default:
+      console.log(`🤷‍♂️ 未処理のイベントタイプ ${event.type}`);
   }
 
   res.status(200).end();
