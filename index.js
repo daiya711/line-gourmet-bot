@@ -48,12 +48,12 @@ const stripePlans = {
     label: "ベーシック（月500円）"
   },
   standard: {
-    priceId: "price_1RgK6vCE2c7uO9voLkvsyEUq",
+    priceId: "price_1RgOITCE2c7uO9vor59pbAx2",
     usageLimit: 40,
     label: "スタンダード（月1000円）"
   },
   premium: {
-    priceId: "price_1RgK72CE2c7uO9vopAQ3mVkP",
+    priceId: "price_1RgOJzCE2c7uO9voM5P9BmIH",
     usageLimit: Infinity,
     label: "プレミアム（月2000円・無制限）"
   }
@@ -860,8 +860,36 @@ sessionStore[userId] = {
       else if (event.type === "postback") {
         const replyToken = event.replyToken;
         const postbackData = new URLSearchParams(event.postback.data);
+
+         const userId = event.source.userId; 
         
         const userDoc = await userDB.findOne({ userId });
+        if (postbackData.get("action") === "selectPlan") {
+  const planKey = postbackData.get("plan");
+  
+  const paymentLinks = {
+    basic: "https://buy.stripe.com/eVq9AS2224B6d31ejM33W00",
+    standard: "https://buy.stripe.com/eVqeVc4aa3x2d31b7A33W01",
+    premium: "https://buy.stripe.com/fZu9ASbCC9Vqgfd1x033W02"
+  };
+
+  const sessionUrl = paymentLinks[planKey];
+
+  if (!sessionUrl) {
+    return client.replyMessage(replyToken, {
+      type: "text",
+      text: "⚠️ 選択されたプランの決済リンクが見つかりませんでした。再度お試しください。"
+    });
+  }
+
+  await client.replyMessage(replyToken, {
+    type: "text",
+    text: `✅ 選択されたプランの登録・変更はこちらからお手続きください。\n${sessionUrl}`
+  });
+
+  return;
+}
+
 // ① userDocが存在しない場合（初回ユーザー）を先に処理
 if (!userDoc) {
   await userDB.insertOne({
@@ -885,10 +913,10 @@ if (!userDoc) {
       case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
         usageLimit = 20;
         break;
-      case "price_1RgK6vCE2c7uO9voLkvsyEUq":
+      case "price_1RgOITCE2c7uO9vor59pbAx2":
         usageLimit = 40;
         break;
-      case "price_1RgK72CE2c7uO9vopAQ3mVkP":
+      case "price_1RgOJzCE2c7uO9voM5P9BmIH":
         usageLimit = Infinity;
         break;
     }
@@ -903,22 +931,45 @@ if (!userDoc) {
     userDoc.usageCount = 0; // リセットを反映
   }
 
-  if (userDoc.usageCount >= usageLimit) {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "subscription",
-      line_items: [{ price: "price_1Rc4DbCE2c7uO9vomtr7CWPk", quantity: 1 }],
-      success_url: "https://line.me",
-      cancel_url: "https://line.me",
-      metadata: { lineUserId: userId }
-    });
+ if (userDoc.usageCount >= usageLimit) {
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "ベーシック（月500円・20回）",
+            data: "action=selectPlan&plan=basic",
+            displayText: "ベーシックプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "スタンダード（月1000円・40回）",
+            data: "action=selectPlan&plan=standard",
+            displayText: "スタンダードプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "プレミアム（月2000円・無制限）",
+            data: "action=selectPlan&plan=premium",
+            displayText: "プレミアムプランを選択"
+          }
+        }
+      ]
+    }
+  });
+  return;
+}
 
-    await client.replyMessage(event.replyToken, {
-      type: "text",
-      text: `🔒 月間の利用回数を超えました。プラン変更はこちら:\n${session.url}`
-    });
-    return;
-  }
 
   await userDB.updateOne(
     { userId },
