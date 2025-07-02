@@ -21,6 +21,12 @@ mongoClient.connect()
   .then(client => {
     console.log("✅ MongoDB接続成功");
     userDB = client.db("linebot").collection("users");
+
+    // ✅ MongoDB接続成功後にExpressを起動
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      console.log(`✅ Bot is running on port ${PORT}`);
+    });
   })
   .catch(err => {
     console.error("❌ MongoDB接続エラー:", err);
@@ -206,7 +212,7 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
 
 
 
-app.post("/webhook", express.raw({ type: 'application/json' }), middleware(config), async (req, res) => {
+app.post("/webhook", middleware(config), async (req, res) => { 
   try {
     const events = req.body.events;
     await Promise.all(events.map(async (event) => {
@@ -214,6 +220,128 @@ app.post("/webhook", express.raw({ type: 'application/json' }), middleware(confi
 
       if (event.type === "message" && event.message.type === "text") {
         const userInput = event.message.text;
+
+
+        // 🔥【ここに追加】🔥
+        const userDoc = await userDB.findOne({ userId });
+
+        // 初回（userDocが存在しない場合）
+        if (!userDoc) {
+          await userDB.insertOne({
+            userId,
+            usageCount: 1, // 初回利用カウント
+            subscribed: false,
+            usageMonth: new Date().getMonth(),
+            updatedAt: new Date()
+          });
+
+          await client.replyMessage(event.replyToken, {
+            type: "text",
+            text: "🔰 初回は無料でご利用いただけます！ご希望のお店をお伝えください。"
+          });
+          return; // 初回終了（初回はここでリターン）
+        }
+
+        // 2回目以降
+        if (!userDoc.subscribed) { // 未サブスクユーザーの処理
+          if (userDoc.usageCount >= 1) { // 既に1回使用済みの場合
+            await client.replyMessage(event.replyToken, {
+              type: "text",
+              text: "🔒 無料でのご利用は1回のみです。引き続き利用するには、以下からプランをお選びください。",
+              quickReply: {
+                items: [
+                  {
+                    type: "action",
+                    action: {
+                      type: "postback",
+                      label: "ベーシック（月500円・20回）",
+                      data: "action=selectPlan&plan=basic",
+                      displayText: "ベーシックプランを選択"
+                    }
+                  },
+                  {
+                    type: "action",
+                    action: {
+                      type: "postback",
+                      label: "スタンダード（月1000円・40回）",
+                      data: "action=selectPlan&plan=standard",
+                      displayText: "スタンダードプランを選択"
+                    }
+                  },
+                  {
+                    type: "action",
+                    action: {
+                      type: "postback",
+                      label: "プレミアム（月2000円・無制限）",
+                      data: "action=selectPlan&plan=premium",
+                      displayText: "プレミアムプランを選択"
+                    }
+                  }
+                ]
+              }
+            });
+            return; // 無料使用回数を超えたので、ここでリターン
+          } else {
+            // 2回目以降だがまだ無料回数内（今回の要件だとここは不要だが安全策）
+            await userDB.updateOne(
+              { userId },
+              { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+            );
+          }
+        }
+
+        // サブスク済ユーザー（月間使用回数チェック）
+        if (userDoc.subscribed) {
+          const currentMonth = new Date().getMonth();
+          if (userDoc.usageMonth !== currentMonth) {
+            await userDB.updateOne(
+              { userId },
+              { $set: { usageCount: 0, usageMonth: currentMonth } }
+            );
+            userDoc.usageCount = 0;
+          }
+
+          let usageLimit = 0;
+          switch (userDoc.planId) {
+            case stripePlans.basic.priceId:
+              usageLimit = stripePlans.basic.usageLimit;
+              break;
+            case stripePlans.standard.priceId:
+              usageLimit = stripePlans.standard.usageLimit;
+              break;
+            case stripePlans.premium.priceId:
+              usageLimit = Infinity;
+              break;
+            default:
+              usageLimit = 0; // 不明な場合は安全に0に設定
+          }
+
+          if (userDoc.usageCount >= usageLimit) {
+            await client.replyMessage(event.replyToken, {
+              type: "text",
+              text: "🔒 今月の利用上限に達しました。プランの変更またはアップグレードをご検討ください。",
+              quickReply: {
+                items: [
+                  {
+                    type: "action",
+                    action: {
+                      type: "postback",
+                      label: "プラン変更",
+                      data: "action=selectPlan",
+                      displayText: "プラン変更"
+                    }
+                  }
+                ]
+              }
+            });
+            return;
+          } else {
+            await userDB.updateOne(
+              { userId },
+              { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+            );
+          }
+        }
 
  if (userInput.includes("解約") || userInput.includes("キャンセル")) {
   const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
@@ -522,17 +650,19 @@ if ((userInput.includes("違う") || userInput.includes("他")) && sessionStore[
   const remaining = previous.allShops.filter(s => !previous.shown.includes(s.name));
 
 
+  const prevLocation = previous.previousStructure.location || "";
+const prevGenre = previous.previousStructure.genre || "";
+const prevKeyword = previous.previousStructure.keyword || "";
+
+
+
+
   if (remaining.length === 0) {
     return client.replyMessage(event.replyToken, {
       type: "text",
       text: "すでにすべてのお店をご紹介しました！また最初から条件を送ってください🙏"
     });
   }
-
-  const prevLocation = previous.previousStructure.location || "";
-const prevGenre = previous.previousStructure.genre || "";
-const prevKeyword = previous.previousStructure.keyword || "";
-
 
   const shopList = remaining.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
 await client.pushMessage(userId, {
@@ -609,7 +739,7 @@ shop.generatedTags = gptTag.choices[0].message.content?.trim() || "#おすすめ
     type: "bubble",
     hero: {
       type: "image",
-      url: shop.photo.pc.l,
+      url: shop.photo.pc.l ,
       size: "full",
       aspectRatio: "4:3",
       aspectMode: "cover"
@@ -857,11 +987,12 @@ sessionStore[userId] = {
       }
 
     // 🔥 作業４（今回追加したpostback処理）
-      else if (event.type === "postback") {
+   
+     else if (event.type === "postback"){
         const replyToken = event.replyToken;
         const postbackData = new URLSearchParams(event.postback.data);
 
-         const userId = event.source.userId; 
+       
         
         const userDoc = await userDB.findOne({ userId });
         if (postbackData.get("action") === "selectPlan") {
