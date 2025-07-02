@@ -364,7 +364,7 @@ const prompt =
    `前回の検索ジャンル: ${prevGenre}\n` +
    `（ジャンルは必ず「${prevGenre}」の範囲で選んでください）\n` +
    `追加のご希望: ${userInput}\n\n` +
-   `上記をもとに、以下の店舗リストから1件選び、理由を添えてください。\n` +
+   `上記をもとに、以下の店舗リストから3件選び、理由を添えてください。\n` +
   `形式：\n- 店名: ○○○\n- 理由: ○○○`;
 
 
@@ -545,7 +545,7 @@ await client.pushMessage(userId, {
 const prompt = 
 `ユーザーの希望は「${previous.original}」です。
 最初に検索した場所は「${prevLocation}」、ジャンルは「${prevGenre}」、キーワードは「${prevKeyword}」です。
-必ずこれらの条件を踏まえ、以下の残り候補から違う1件を選び、理由を添えてください。
+必ずこれらの条件を踏まえ、以下の残り候補から違う4件を選び、理由を添えてください。
 形式：
 - 店名: ○○
 - 理由: ○○`;
@@ -711,7 +711,7 @@ if (allShops.length === 0) {
 
 // 🔍 GPTに意味フィルタ選出（キーワードがあれば考慮させる）
 const shopList = allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
-const prompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな1件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+const prompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな4件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
 
 const gptPick = await openai.chat.completions.create({
   model: "gpt-4",
