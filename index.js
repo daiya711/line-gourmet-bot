@@ -23,7 +23,7 @@ mongoClient.connect()
     userDB = client.db("linebot").collection("users");
 
     // ✅ MongoDB接続成功後にExpressを起動
-    const PORT = process.env.PORT || 3000;
+    const PORT = process.env.PORT || 1000;
     app.listen(PORT, () => {
       console.log(`✅ Bot is running on port ${PORT}`);
     });
@@ -1117,8 +1117,3 @@ if (!userDoc) {
   } // catch終了
 }); 
    
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Bot is running on port ${PORT}`);
-});
