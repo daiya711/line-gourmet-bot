@@ -215,7 +215,7 @@ app.post("/webhook", express.raw({ type: 'application/json' }), middleware(confi
       if (event.type === "message" && event.message.type === "text") {
         const userInput = event.message.text;
 
- if (userInput.includes("解約") || userInput.includes("キャンセル") || userInput.includes("プラン変更")) {
+ if (userInput.includes("解約") || userInput.includes("キャンセル")) {
   const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
   const portalUrl = response.data.url;
 
