@@ -40,36 +40,54 @@ const openai = new OpenAI({
 });
 const HOTPEPPER_API_KEY = process.env.HOTPEPPER_API_KEY;
 
-// ✅ StripeのCheckoutセッション作成エンドポイント（LINEユーザーIDをmetadataに含める）
+// 🔥 Stripeのプラン定義（よりわかりやすく改善）
+const stripePlans = {
+  basic: {
+    priceId: "price_1Rc4DbCE2c7uO9vomtr7CWPk",
+    usageLimit: 20,
+    label: "ベーシック（月500円）"
+  },
+  standard: {
+    priceId: "price_1RgK6vCE2c7uO9voLkvsyEUq",
+    usageLimit: 40,
+    label: "スタンダード（月1000円）"
+  },
+  premium: {
+    priceId: "price_1RgK72CE2c7uO9vopAQ3mVkP",
+    usageLimit: Infinity,
+    label: "プレミアム（月2000円・無制限）"
+  }
+};
+
+
+
+// ✅ プランをユーザーが選択できるように修正
 app.post("/create-checkout-session", express.json(), async (req, res) => {
-  const { userId } = req.body;
+  const { userId, plan } = req.body; // ← planを追加
+
+  if (!stripePlans[plan]) {
+    return res.status(400).json({ error: "無効なプランです。" });
+  }
+
+  const priceId = stripePlans[plan].priceId;
 
   try {
-    console.log("Stripeへ渡すLINEユーザーID:", userId);
-
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "subscription",
-      line_items: [
-        {
-          price: "price_1Rc4DbCE2c7uO9vomtr7CWPk", // ← あなたの価格ID
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: priceId, quantity: 1 }], // 動的にpriceをセット
       success_url: "https://line-gourmet-bot.onrender.com/success",
       cancel_url: "https://line-gourmet-bot.onrender.com/cancel",
-      metadata: {
-        lineUserId: userId
-      },
+      metadata: { lineUserId: userId },
     });
 
-    // ✅ URLを返す（フロントやBotで使う）
     res.json({ url: session.url });
   } catch (err) {
     console.error("❌ Stripeセッション作成エラー:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.post("/create-portal-session", express.json(), async (req, res) => {
   const { userId } = req.body;
@@ -130,26 +148,32 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
   }
 
   switch (event.type) {
-    case "checkout.session.completed":{
-      const session = event.data.object;
-      const lineUserId = session.metadata?.lineUserId;
+    case "checkout.session.completed": {
+  const session = event.data.object;
+  const lineUserId = session.metadata?.lineUserId;
 
-      if (lineUserId) {
-        await userDB.updateOne(
-          { userId: lineUserId },
-          {
-            $set: {
-              subscribed: true,
-              stripeCustomerId: session.customer,
-              updatedAt: new Date()
-            }
-          },
-          { upsert: true }
-        );
-        console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新しました`);
-      }
-      break;
-       }
+  // プランのprice_idを取得（sessionから）
+  const purchasedPlanId = session.items.data[0].price.id;
+
+  if (lineUserId) {
+    await userDB.updateOne(
+      { userId: lineUserId },
+      {
+        $set: {
+          subscribed: true,
+          stripeCustomerId: session.customer,
+          planId: purchasedPlanId, // ← ここにプランのIDを保存
+          usageCount: 0,           // 新しく購入したため利用回数を0にリセット
+          usageMonth: new Date().getMonth(), // 月も更新する
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+    console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新し、プラン（${purchasedPlanId}）をDBに保存しました`);
+  }
+  break;
+}
 
     case "customer.subscription.deleted":
     case "customer.subscription.updated":{
@@ -186,69 +210,41 @@ app.post("/webhook", express.raw({ type: 'application/json' }), middleware(confi
   try {
     const events = req.body.events;
     await Promise.all(events.map(async (event) => {
+      const userId = event.source.userId;
+
       if (event.type === "message" && event.message.type === "text") {
         const userInput = event.message.text;
-        const userId = event.source.userId;
 
  if (userInput.includes("解約") || userInput.includes("キャンセル") || userInput.includes("プラン変更")) {
-          const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
-          const portalUrl = response.data.url;
+  const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
+  const portalUrl = response.data.url;
 
-          await client.replyMessage(event.replyToken, {
-            type: "text",
-            text: `🔧 サブスクリプションの解約やプラン変更は、以下のリンクから簡単に行えます。\n👇\n${portalUrl}`
-          });
-          return;
-        }
-
-
-const userDoc = await userDB.findOne({ userId });
-
-if (!userDoc) {
-  // 初回ユーザー → 登録して1回目無料
-  await userDB.insertOne({
-    userId,
-    introCount: 1,
-    subscribed: false,
-    previousStructure: null,
-    allShops: [],
-    shown: [],
-    original: userInput
+  return client.replyMessage(event.replyToken, {
+    type: "text",
+    text: `🔧 サブスクリプションの解約はこちら:\n${portalUrl}`
   });
-  console.log("🆕 新規ユーザー登録：1回目無料で続行");
-} else if (userDoc.subscribed) {
-  console.log("✅ 課金済みユーザー：続行");
-} else if (userDoc.introCount >= 1) {
-  // ⛔ 無料回数超え → Stripe課金誘導
+}
 
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "subscription",
-    line_items: [
-      {
-        price: "price_1Rc4DbCE2c7uO9vomtr7CWPk", // あなたのStripeの価格IDに置き換えてください
-        quantity: 1,
-      },
-    ],
-    success_url:  "https://line.me",
-    cancel_url:  "https://line.me",
-    metadata: {
-      lineUserId: userId // ← これが重要
+else if (userInput.includes("プラン変更")) {
+  // プラン変更（クイックリプライ）
+  return client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔧 ご希望のプランを選択してください。",
+    quickReply: {
+      items: Object.entries(stripePlans).map(([planKey, details]) => ({
+        type: "action",
+        action: {
+          type: "postback",
+          label: details.label,
+          data: `action=selectPlan&plan=${planKey}`,
+          displayText: `${details.label}を選択`
+        }
+      }))
     }
   });
-
-  await client.replyMessage(event.replyToken, {
-    type: "text",
-text:  `🔒 このBotは2回目以降の利用には有料プラン登録が必要です。\n👇ご登録はこちら\n${session.url}`
-  });
-  return;
-} 
-else {
-  // 無料2回目としてカウントアップ
-  await userDB.updateOne({ userId }, { $inc: { introCount: 1 } });
-  console.log("🟡 無料利用2回目");
 }
-   
+
+
 
 // 途中希望もっと静か・おしゃれ・個室などを初回取得済みショップから再選出する形式
 if (
@@ -368,7 +364,7 @@ const prompt =
    `前回の検索ジャンル: ${prevGenre}\n` +
    `（ジャンルは必ず「${prevGenre}」の範囲で選んでください）\n` +
    `追加のご希望: ${userInput}\n\n` +
-   `上記をもとに、以下の店舗リストから4件選び、理由を添えてください。\n` +
+   `上記をもとに、以下の店舗リストから1件選び、理由を添えてください。\n` +
   `形式：\n- 店名: ○○○\n- 理由: ○○○`;
 
 
@@ -520,8 +516,6 @@ const prompt =
   });
 }
 
-
-        
 // ✅ "違う店" ブロック全体修正済みバージョン
 if ((userInput.includes("違う") || userInput.includes("他")) && sessionStore[userId]) {
   const previous = sessionStore[userId];
@@ -551,7 +545,7 @@ await client.pushMessage(userId, {
 const prompt = 
 `ユーザーの希望は「${previous.original}」です。
 最初に検索した場所は「${prevLocation}」、ジャンルは「${prevGenre}」、キーワードは「${prevKeyword}」です。
-必ずこれらの条件を踏まえ、以下の残り候補から違う3件を選び、理由を添えてください。
+必ずこれらの条件を踏まえ、以下の残り候補から違う1件を選び、理由を添えてください。
 形式：
 - 店名: ○○
 - 理由: ○○`;
@@ -717,7 +711,7 @@ if (allShops.length === 0) {
 
 // 🔍 GPTに意味フィルタ選出（キーワードがあれば考慮させる）
 const shopList = allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
-const prompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな4件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+const prompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな1件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
 
 const gptPick = await openai.chat.completions.create({
   model: "gpt-4",
@@ -861,15 +855,86 @@ sessionStore[userId] = {
           }
         ]);
       }
-    }));
-    res.status(200).end();
-  } catch (err) {
-    console.error("❌ エラー:", err);
-    res.status(500).end();
+
+    // 🔥 作業４（今回追加したpostback処理）
+      else if (event.type === "postback") {
+        const replyToken = event.replyToken;
+        const postbackData = new URLSearchParams(event.postback.data);
+        
+        const userDoc = await userDB.findOne({ userId });
+// ① userDocが存在しない場合（初回ユーザー）を先に処理
+if (!userDoc) {
+  await userDB.insertOne({
+    userId,
+    usageCount: 1,
+    subscribed: false,
+    previousStructure: null,
+    allShops: [],
+    shown: [],
+    original: userInput,
+    usageMonth: new Date().getMonth(),
+    updatedAt: new Date()
+  });
+  console.log("🆕 新規ユーザー登録：1回目無料で続行");
+} else {
+  // ② userDocが存在する場合（通常処理）
+  
+  let usageLimit = 1; // 無料ユーザーのデフォルト値
+  if (userDoc.subscribed) {
+    switch (userDoc.planId) {
+      case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
+        usageLimit = 20;
+        break;
+      case "price_1RgK6vCE2c7uO9voLkvsyEUq":
+        usageLimit = 40;
+        break;
+      case "price_1RgK72CE2c7uO9vopAQ3mVkP":
+        usageLimit = Infinity;
+        break;
+    }
   }
-});
 
+  const currentMonth = new Date().getMonth();
+  if (userDoc.usageMonth !== currentMonth) {
+    await userDB.updateOne(
+      { userId },
+      { $set: { usageCount: 0, usageMonth: currentMonth } }
+    );
+    userDoc.usageCount = 0; // リセットを反映
+  }
 
+  if (userDoc.usageCount >= usageLimit) {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [{ price: "price_1Rc4DbCE2c7uO9vomtr7CWPk", quantity: 1 }],
+      success_url: "https://line.me",
+      cancel_url: "https://line.me",
+      metadata: { lineUserId: userId }
+    });
+
+    await client.replyMessage(event.replyToken, {
+      type: "text",
+      text: `🔒 月間の利用回数を超えました。プラン変更はこちら:\n${session.url}`
+    });
+    return;
+  }
+
+  await userDB.updateOne(
+    { userId },
+    { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+  );
+  console.log(`🟢 利用回数: ${userDoc.usageCount + 1}/${usageLimit}`);
+}
+}
+   }));
+       res.status(200).end(); // LINEへの正常レスポンス
+  } catch (err) { // tryブロック終了＆catch開始
+    console.error("❌ webhookエラー:", err);
+    res.status(500).end();
+  } // catch終了
+}); 
+   
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
