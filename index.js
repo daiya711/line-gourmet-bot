@@ -289,61 +289,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
             );
           }
         }
-
-        // サブスク済ユーザー（月間使用回数チェック）
-        if (userDoc.subscribed) {
-          const currentMonth = new Date().getMonth();
-          if (userDoc.usageMonth !== currentMonth) {
-            await userDB.updateOne(
-              { userId },
-              { $set: { usageCount: 0, usageMonth: currentMonth } }
-            );
-            userDoc.usageCount = 0;
-          }
-
-          let usageLimit = 0;
-          switch (userDoc.planId) {
-            case stripePlans.basic.priceId:
-              usageLimit = stripePlans.basic.usageLimit;
-              break;
-            case stripePlans.standard.priceId:
-              usageLimit = stripePlans.standard.usageLimit;
-              break;
-            case stripePlans.premium.priceId:
-              usageLimit = Infinity;
-              break;
-            default:
-              usageLimit = 0; // 不明な場合は安全に0に設定
-          }
-
-    if (userDoc.usageCount >= usageLimit) {
-  await client.replyMessage(event.replyToken, {
-    type: "text",
-    text: "🔒 今月の利用上限に達しました。ご希望のプランを選択してください。",
-    quickReply: {
-      items: Object.entries(stripePlans).map(([planKey, details]) => ({
-        type: "action",
-        action: {
-          type: "postback",
-          label: details.label,
-          data: `action=selectPlan&plan=${planKey}`,
-          displayText: `${details.label}を選択`
-        }
-      }))
-    }
-  });
-  return;
-}
-
-          else {
-            await userDB.updateOne(
-              { userId },
-              { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-            );
-          }
-        }
-
- if (userInput.includes("解約") || userInput.includes("キャンセル")) {
+// 🔥 まずは【解約・キャンセル】のチェックを最優先
+if (userInput.includes("解約") || userInput.includes("キャンセル")) {
   const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
   const portalUrl = response.data.url;
 
@@ -353,8 +300,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
   });
 }
 
+// 🔥 次に【プラン変更】の処理
 else if (userInput.includes("プラン変更")) {
-  // プラン変更（クイックリプライ）
   return client.replyMessage(event.replyToken, {
     type: "text",
     text: "🔧 ご希望のプランを選択してください。",
@@ -372,6 +319,56 @@ else if (userInput.includes("プラン変更")) {
   });
 }
 
+// 🔥 最後にサブスク済ユーザー（月間使用回数チェック）
+if (userDoc.subscribed) {
+  const currentMonth = new Date().getMonth();
+  if (userDoc.usageMonth !== currentMonth) {
+    await userDB.updateOne(
+      { userId },
+      { $set: { usageCount: 0, usageMonth: currentMonth } }
+    );
+    userDoc.usageCount = 0;
+  }
+
+  let usageLimit = 0;
+  switch (userDoc.planId) {
+    case stripePlans.basic.priceId:
+      usageLimit = stripePlans.basic.usageLimit;
+      break;
+    case stripePlans.standard.priceId:
+      usageLimit = stripePlans.standard.usageLimit;
+      break;
+    case stripePlans.premium.priceId:
+      usageLimit = Infinity;
+      break;
+    default:
+      usageLimit = 0;
+  }
+
+  if (userDoc.usageCount >= usageLimit) {
+    await client.replyMessage(event.replyToken, {
+      type: "text",
+      text: "🔒 今月の利用上限に達しました。ご希望のプランを選択してください。",
+      quickReply: {
+        items: Object.entries(stripePlans).map(([planKey, details]) => ({
+          type: "action",
+          action: {
+            type: "postback",
+            label: details.label,
+            data: `action=selectPlan&plan=${planKey}`,
+            displayText: `${details.label}を選択`
+          }
+        }))
+      }
+    });
+    return;
+  } else {
+    await userDB.updateOne(
+      { userId },
+      { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+    );
+  }
+}
 
 
 // 途中希望もっと静か・おしゃれ・個室などを初回取得済みショップから再選出する形式
