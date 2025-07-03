@@ -150,8 +150,7 @@ app.post("/create-checkout-session", express.json(), async (req, res) => {
   const { userId, plan } = req.body;
 
   // ======= 追加: 必須チェックとログ =======
-  console.log("🟢 /create-checkout-session called! userId:", userId, "plan:", plan);
-
+  console.log("🟢 Checkout Session作成リクエスト:", userId, plan);
   // userId/planが空ならここで止める（これでWebhookエラーは絶対起きなくなる）
   if (!userId || !plan) {
     console.error("❌ userId または plan が未定義です");
@@ -160,34 +159,34 @@ app.post("/create-checkout-session", express.json(), async (req, res) => {
   // ======= ここまで追加 =======
 
   if (!stripePlans[plan]) {
+        console.error("❌ 無効なプラン指定:", plan);
     return res.status(400).json({ error: "無効なプランです。" });
   }
 
   const priceId = stripePlans[plan].priceId;
-
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
-      // 必ず正しい値をセット
-      metadata: { lineUserId: userId, planId: priceId },
+      line_items: [{ 
+        price: priceId, 
+        quantity: 1,
+      }],
       subscription_data: {
-        metadata: { lineUserId: userId, planId: priceId }
+        metadata: { lineUserId: userId, planId: priceId }, // 必ずsubscription_dataにメタデータ設定
       },
       success_url: "https://line-gourmet-bot.onrender.com/success",
-      cancel_url: "https://line-gourmet-bot.onrender.com/cancel"
+      cancel_url: "https://line-gourmet-bot.onrender.com/cancel",
+      metadata: { lineUserId: userId, planId: priceId } // Checkout Session本体にも追加設定
     });
-
-    console.log("🟢 Stripe Checkout Session作成成功: sessionId=", session.id);
-
+       console.log("✅ Checkout Session作成成功: sessionId=", session.id);
     res.json({ url: session.url });
+
   } catch (err) {
-    console.error("❌ Stripeセッション作成エラー:", err);
+    console.error("❌ Checkout Session作成エラー:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 app.post("/create-portal-session", express.json(), async (req, res) => {
   const { userId } = req.body;
