@@ -82,6 +82,9 @@ app.post("/create-checkout-session", express.json(), async (req, res) => {
       payment_method_types: ["card"],
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }], // 動的にpriceをセット
+        subscription_data: {
+        metadata: { lineUserId: userId, planId: priceId } // ← 🔥ここを追加🔥
+      },
       success_url: "https://line-gourmet-bot.onrender.com/success",
       cancel_url: "https://line-gourmet-bot.onrender.com/cancel",
       metadata: { lineUserId: userId },
@@ -156,11 +159,12 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
   switch (event.type) {
     case "checkout.session.completed": {
   const session = event.data.object;
+ const subscriptionId = session.subscription; 
+
+ const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   const lineUserId = session.metadata?.lineUserId;
-
   // プランのprice_idを取得（sessionから）
-  const purchasedPlanId = session.items.data[0].price.id;
-
+ const purchasedPlanId = subscription.metadata.planId || subscription.items.data[0].price.id;
   if (lineUserId) {
     await userDB.updateOne(
       { userId: lineUserId },
