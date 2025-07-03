@@ -1005,39 +1005,40 @@ sessionStore[userId] = {
       }
 
     // 🔥 作業４（今回追加したpostback処理）
-   
-     else if (event.type === "postback"){
-        const replyToken = event.replyToken;
-        const postbackData = new URLSearchParams(event.postback.data);
+ else if (event.type === "postback") {
+  const replyToken = event.replyToken;
+  const postbackData = new URLSearchParams(event.postback.data);
 
-       
-        
-        const userDoc = await userDB.findOne({ userId });
-        if (postbackData.get("action") === "selectPlan") {
-  const planKey = postbackData.get("plan");
-  
-  const paymentLinks = {
-    basic: "https://buy.stripe.com/eVq9AS2224B6d31ejM33W00",
-    standard: "https://buy.stripe.com/eVqeVc4aa3x2d31b7A33W01",
-    premium: "https://buy.stripe.com/fZu9ASbCC9Vqgfd1x033W02"
-  };
+  if (postbackData.get("action") === "selectPlan") {
+    const planKey = postbackData.get("plan");
+    const userId = event.source.userId;  // userId を取得（重要）
 
-  const sessionUrl = paymentLinks[planKey];
+    try {
+      // 🔥 ExpressサーバーのAPIを呼んで動的に決済リンクを生成
+      const response = await axios.post(
+        "https://line-gourmet-bot.onrender.com/create-checkout-session",
+        { userId, plan: planKey } // userIdとプランを送信
+      );
 
-  if (!sessionUrl) {
-    return client.replyMessage(replyToken, {
-      type: "text",
-      text: "⚠️ 選択されたプランの決済リンクが見つかりませんでした。再度お試しください。"
-    });
+      const sessionUrl = response.data.url; // Expressからの動的リンク
+
+      await client.replyMessage(replyToken, {
+        type: "text",
+        text: `✅ 選択されたプランの登録・変更はこちらからお手続きください。\n${sessionUrl}`
+      });
+
+    } catch (err) {
+      console.error("❌ Checkout Session作成エラー:", err);
+      await client.replyMessage(replyToken, {
+        type: "text",
+        text: "⚠️ 決済リンクの作成中にエラーが発生しました。再度お試しください。"
+      });
+    }
+
+    return;
   }
-
-  await client.replyMessage(replyToken, {
-    type: "text",
-    text: `✅ 選択されたプランの登録・変更はこちらからお手続きください。\n${sessionUrl}`
-  });
-
-  return;
 }
+
 
 // ① userDocが存在しない場合（初回ユーザー）を先に処理
 if (!userDoc) {
@@ -1125,7 +1126,7 @@ if (!userDoc) {
     { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
   );
   console.log(`🟢 利用回数: ${userDoc.usageCount + 1}/${usageLimit}`);
-}
+
 }
    }));
        res.status(200).end(); // LINEへの正常レスポンス
