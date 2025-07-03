@@ -232,7 +232,37 @@ app.post("/webhook", middleware(config), async (req, res) => {
         // 🔥【ここに追加】🔥
         const userDoc = await userDB.findOne({ userId });
 
-        // 初回（userDocが存在しない場合）
+     
+// 🔥 まずは【解約・キャンセル】のチェックを最優先
+if (userInput.includes("解約") || userInput.includes("キャンセル")) {
+  const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
+  const portalUrl = response.data.url;
+
+  return client.replyMessage(event.replyToken, {
+    type: "text",
+    text: `🔧 サブスクリプションの解約はこちら:\n${portalUrl}`
+  });
+}
+
+// 🔥 次に【プラン変更】の処理
+else if (userInput.includes("プラン変更")) {
+  return client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔧 ご希望のプランを選択してください。",
+    quickReply: {
+      items: Object.entries(stripePlans).map(([planKey, details]) => ({
+        type: "action",
+        action: {
+          type: "postback",
+          label: details.label,
+          data: `action=selectPlan&plan=${planKey}`,
+          displayText: `${details.label}を選択`
+        }
+      }))
+    }
+  });
+}
+   // 初回（userDocが存在しない場合）
         if (!userDoc) {
           await userDB.insertOne({
             userId,
@@ -296,35 +326,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
             );
           }
         }
-// 🔥 まずは【解約・キャンセル】のチェックを最優先
-if (userInput.includes("解約") || userInput.includes("キャンセル")) {
-  const response = await axios.post("https://line-gourmet-bot.onrender.com/create-portal-session", { userId });
-  const portalUrl = response.data.url;
-
-  return client.replyMessage(event.replyToken, {
-    type: "text",
-    text: `🔧 サブスクリプションの解約はこちら:\n${portalUrl}`
-  });
-}
-
-// 🔥 次に【プラン変更】の処理
-else if (userInput.includes("プラン変更")) {
-  return client.replyMessage(event.replyToken, {
-    type: "text",
-    text: "🔧 ご希望のプランを選択してください。",
-    quickReply: {
-      items: Object.entries(stripePlans).map(([planKey, details]) => ({
-        type: "action",
-        action: {
-          type: "postback",
-          label: details.label,
-          data: `action=selectPlan&plan=${planKey}`,
-          displayText: `${details.label}を選択`
-        }
-      }))
-    }
-  });
-}
 
 // 🔥 最後にサブスク済ユーザー（月間使用回数チェック）
 if (userDoc.subscribed) {
