@@ -13,6 +13,78 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
+app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
+  } catch (err) {
+    console.error("❌ Stripe署名検証エラー:", err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const session = event.data.object;
+      const lineUserId = session.metadata?.lineUserId;
+      const purchasedPlanId = session.metadata?.planId; // ← 必ずcheckout.sessionのmetadataから取得する
+      
+      if (!lineUserId || !purchasedPlanId) {
+        console.error("❌ metadata欠落エラー: lineUserIdまたはplanIdがありません");
+        return res.status(400).end();
+      }
+
+      await userDB.updateOne(
+        { userId: lineUserId },
+        {
+          $set: {
+            subscribed: true,
+            stripeCustomerId: session.customer,
+            planId: purchasedPlanId, // ✅ sessionから取得したplanIdを必ず使用
+            usageCount: 0,
+            usageMonth: new Date().getMonth(),
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新（プラン: ${purchasedPlanId}）`);
+      break;
+    }
+
+    case "customer.subscription.deleted":
+    case "customer.subscription.updated": {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      const subscriptionPlanId = subscription.items.data[0].price.id; // subscription更新時のみprice.id使用
+
+      if (subscription.status === "active") {
+        await userDB.updateOne(
+          { stripeCustomerId: customerId },
+          { $set: { subscribed: true, planId: subscriptionPlanId, updatedAt: new Date() } }
+        );
+        console.log(`✅ プラン更新（Customer ID: ${customerId}）を反映しました`);
+      } else {
+        await userDB.updateOne(
+          { stripeCustomerId: customerId },
+          { $set: { subscribed: false, updatedAt: new Date() } }
+        );
+        console.log(`🚫 解約処理（Customer ID: ${customerId}）を反映しました`);
+      }
+      break;
+    }
+
+    default:
+      console.log(`🤷‍♂️ 未処理のイベントタイプ ${event.type}`);
+  }
+
+  res.status(200).end();
+});
+
+
+
+
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let userDB;
@@ -144,77 +216,6 @@ async function fetchShops(keyword, genreCode = "", budgetCode = "") {
   }
   return all;
 }
-
-app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
-  } catch (err) {
-    console.error("❌ Stripe署名検証エラー:", err);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  switch (event.type) {
-    case "checkout.session.completed": {
-  const session = event.data.object;
- const subscriptionId = session.subscription; 
-
- const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  const lineUserId = session.metadata?.lineUserId;
-  // プランのprice_idを取得（sessionから）
- const purchasedPlanId = subscription.metadata.planId || subscription.items.data[0].price.id;
-  if (lineUserId) {
-    await userDB.updateOne(
-      { userId: lineUserId },
-      {
-        $set: {
-          subscribed: true,
-          stripeCustomerId: session.customer,
-          planId: purchasedPlanId, // ← ここにプランのIDを保存
-          usageCount: 0,           // 新しく購入したため利用回数を0にリセット
-          usageMonth: new Date().getMonth(), // 月も更新する
-          updatedAt: new Date()
-        }
-      },
-      { upsert: true }
-    );
-    console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新し、プラン（${purchasedPlanId}）をDBに保存しました`);
-  }
-  break;
-}
-
-    case "customer.subscription.deleted":
-   case "customer.subscription.updated": {
-  const subscription = event.data.object;
-  const customerId = subscription.customer;
-  const purchasedPlanId = subscription.metadata.planId || subscription.items.data[0].price.id;
-
-  if (subscription.status === "active") {
-    await userDB.updateOne(
-      { stripeCustomerId: customerId },
-      { $set: { subscribed: true, planId: purchasedPlanId, updatedAt: new Date() } }
-    );
-    console.log(`✅ プラン更新（Customer ID: ${customerId}）を反映しました`);
-  } else {
-    await userDB.updateOne(
-      { stripeCustomerId: customerId },
-      { $set: { subscribed: false, updatedAt: new Date() } }
-    );
-    console.log(`🚫 解約処理（Customer ID: ${customerId}）を反映しました`);
-  }
-  break;
-}
-
-
-    default:
-      console.log(`🤷‍♂️ 未処理のイベントタイプ ${event.type}`);
-  }
-
-  res.status(200).end();
-});
-
 
 
 
