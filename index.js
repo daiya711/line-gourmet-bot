@@ -316,26 +316,26 @@ app.post("/webhook", middleware(config), async (req, res) => {
               usageLimit = 0; // 不明な場合は安全に0に設定
           }
 
-          if (userDoc.usageCount >= usageLimit) {
-            await client.replyMessage(event.replyToken, {
-              type: "text",
-              text: "🔒 今月の利用上限に達しました。プランの変更またはアップグレードをご検討ください。",
-              quickReply: {
-                items: [
-                  {
-                    type: "action",
-                    action: {
-                      type: "postback",
-                      label: "プラン変更",
-                      data: "action=selectPlan",
-                      displayText: "プラン変更"
-                    }
-                  }
-                ]
-              }
-            });
-            return;
-          } else {
+    if (userDoc.usageCount >= usageLimit) {
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 今月の利用上限に達しました。ご希望のプランを選択してください。",
+    quickReply: {
+      items: Object.entries(stripePlans).map(([planKey, details]) => ({
+        type: "action",
+        action: {
+          type: "postback",
+          label: details.label,
+          data: `action=selectPlan&plan=${planKey}`,
+          displayText: `${details.label}を選択`
+        }
+      }))
+    }
+  });
+  return;
+}
+
+          else {
             await userDB.updateOne(
               { userId },
               { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
