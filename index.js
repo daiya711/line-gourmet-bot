@@ -804,16 +804,13 @@ shop.generatedTags = gptTag.choices[0].message.content?.trim() || "#おすすめ
   });
 }
 
-        // ✅ 通常の初回検索リクエスト
 // ✅ 通常の初回検索リクエスト（場所＋ジャンル＋キーワードを柔軟に対応）
 const gptExtract = await openai.chat.completions.create({
   model: "gpt-4",
   messages: [
     {
       role: "system",
-      content: `次の日本語文から以下を抽出してください：\n場所:\nジャンル:\n予算:\nキーワード:
-      キーワード候補として以下を参考にしてください:
-      ${keywordSuggestions.join(", ")}`
+      content: `次の日本語文から以下を抽出してください：\n場所:\nジャンル:\n予算:\nキーワード:\nキーワード候補として以下を参考にしてください:\n${keywordSuggestions.join(", ")}`
     },
     { role: "user", content: userInput }
   ]
@@ -823,49 +820,50 @@ const parsed = gptExtract.choices[0].message.content;
 const location = parsed.match(/場所:\s*(.*)/)?.[1]?.trim() || "";
 const genre = parsed.match(/ジャンル:\s*(.*)/)?.[1]?.trim() || "";
 const keyword = parsed.match(/キーワード:\s*(.*)/)?.[1]?.trim() || "";
-const budget = parsed.match(/予算:\s*(.*)/)?.[1]?.trim() || ""; 
+const budget = parsed.match(/予算:\s*(.*)/)?.[1]?.trim() || "";
 
 await client.pushMessage(userId, {
   type: "text",
-  text: "🔎 ご希望に合うお店を検索しています…"
+  text: "🔎 ご希望に合うお店を検索しています…\n時間がかかる場合がございます\n少しお待ちください🙇‍♂️"
 });
 
-
-// 🔁 検索条件を判定して、ジャンル検索 or 総合検索を分岐
 const genreCode = genreMap[genre] || "";
 const budgetCode = budgetMap[budget] || "";
-const filters = ""; 
-const allShops = await fetchShops(`${location} ${keyword || ""} ${filters || ""}`.trim(), genreCode, budgetCode);if (allShops.length === 0) {
+const filters = "";
+
+const allShops = await fetchShops(`${location} ${keyword || ""} ${filters}`.trim(), genreCode, budgetCode);
+
+if (allShops.length === 0) {
   return client.replyMessage(event.replyToken, {
     type: "text",
     text: "条件に合うお店が見つかりませんでした🙏"
   });
 }
 
-// 🔍 GPTに意味フィルタ選出（キーワードがあれば考慮させる）
 const shopList = allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
-const prompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな3件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+const filterPrompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな1件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
 
 const gptPick = await openai.chat.completions.create({
   model: "gpt-4",
   messages: [
-    { role: "system", content: prompt },
+    { role: "system", content: filterPrompt },
     { role: "user", content: shopList }
   ]
 });
 
 const selectedNames = extractShopNames(gptPick.choices[0].message.content);
 const selected = allShops.filter(s => selectedNames.includes(s.name));
-// ✅ 各店舗に紹介文とおすすめ一品を生成
-for (const shop of selected) {
-  const gptExtra = await openai.chat.completions.create({
-    model: "gpt-4",
-    messages: [
-      {
-        role: "system",
-        content: 
-        `以下の飲食店情報をもとに、【紹介文】と【おすすめの一品】をユーザーの印象に残るよう魅力的に自然な日本語で簡潔に生成してください。また、ユーザーが一目で見やすいように紹介文を工夫してください。
-▼出力フォーマット：
+
+const shopInfos = selected.map(shop => 
+  `店名: ${shop.name}\nジャンル: ${shop.genre.name}\n紹介: ${shop.catch}\n予算: ${shop.budget.name}\n営業時間: ${shop.open}`
+).join("\n\n");
+
+const detailPrompt = `
+以下の飲食店情報をもとに、【紹介文】【おすすめの一品】【タグ】をユーザーの印象に残るよう魅力的に自然な日本語で簡潔に生成してください。また、ユーザーが一目で見やすいように紹介文を工夫してください。
+
+▼出力フォーマット（各店舗必ずこの形式）：
+【店舗】
+《店名》▼出力フォーマット：
 【紹介文】
 ・店名のあとには必ず改行し、次の説明文へ
 ・顔文字や絵文字も1つ添えると魅力的です
@@ -876,46 +874,37 @@ for (const shop of selected) {
 ・料理名のあとに必ず改行し、次の説明文へ
 ・全体で1行以内を目安にまとめてください
 ・料理名を《料理名》で囲ってください
-`
-   },
-      {
-        role: "user",
-        content: `店名: ${shop.name}\nジャンル: ${shop.genre.name}\n紹介: ${shop.catch}\n予算: ${shop.budget.name}\n営業時間: ${shop.open}`
-      }
-    ]
-  });
+【タグ】
+飲食店情報から、Instagram風のハッシュタグとして使える、もっとも最適なそのお店の特徴をキーワードを3つ日本語で抽出してください。\n#記号をつけて1行で出力してください（例：#デート #夜景 #コスパ）
 
-  const response = gptExtra.choices[0].message.content;
-  console.log("GPT紹介文生成結果:", response);
+▼ 店舗リスト：
+${shopInfos}
+`;
 
-const introMatch = response.match(/【紹介文】\s*([\s\S]*?)\s*(?=【|$)/);
-const itemMatch = response.match(/【おすすめの一品】\s*([\s\S]*)/);
+const gptResponse = await openai.chat.completions.create({
+  model: "gpt-4",
+  messages: [{ role: "system", content: detailPrompt }]
+});
+
+const shopResponses = gptResponse.choices[0].message.content.split("【店舗】").slice(1);
+
+shopResponses.forEach((shopResponse, index) => {
+  const shop = selected[index];
+
+  const introMatch = shopResponse.match(/【紹介文】\s*([\s\S]*?)\s*(?=【|$)/);
+  const itemMatch = shopResponse.match(/【おすすめの一品】\s*([\s\S]*?)\s*(?=【|$)/);
+  const tagMatch = shopResponse.match(/【タグ】\s*([\s\S]*?)\s*(?=【|$)/);
 
   shop.generatedIntro = introMatch?.[1]?.trim() || "雰囲気の良いおすすめ店です。";
   shop.generatedItem = itemMatch?.[1]?.trim() || "料理のおすすめ情報は取得できませんでした。";
+  shop.generatedTags = tagMatch?.[1]?.trim() || "#おすすめ";
+});
 
-    const gptTag = await openai.chat.completions.create({
-    model: "gpt-4",
-    messages: [
-      {
-        role: "system",
-        content: `以下の飲食店情報から、Instagram風のハッシュタグとして使える、もっとも最適なそのお店の特徴をキーワードを3つ日本語で抽出してください。\n#記号をつけて1行で出力してください（例：#デート #夜景 #コスパ）`
-      },
-      {
-        role: "user",
-        content: `店名: ${shop.name}\nジャンル: ${shop.genre.name}\n紹介: ${shop.catch}\n予算: ${shop.budget.name}`
-      }
-    ]
-  });
-
-  shop.generatedTags = gptTag.choices[0].message.content?.trim() || "#おすすめ";
-
-}
 sessionStore[userId] = {
   original: userInput,
   allShops,
   shown: selected.map(s => s.name),
-  previousStructure: { location, genre, keyword } // ← 初回検索の条件をここに明確に保存
+  previousStructure: { location, genre, keyword }
 };
 
         if (selected.length === 0) {
