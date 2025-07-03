@@ -811,7 +811,9 @@ const gptExtract = await openai.chat.completions.create({
   messages: [
     {
       role: "system",
-      content: `次の日本語文から以下を抽出してください：\n場所:\nジャンル:\nキーワード:`
+      content: `次の日本語文から以下を抽出してください：\n場所:\nジャンル:\n予算:\nキーワード:
+      キーワード候補として以下を参考にしてください:
+      ${keywordSuggestions.join(", ")}`
     },
     { role: "user", content: userInput }
   ]
@@ -821,6 +823,7 @@ const parsed = gptExtract.choices[0].message.content;
 const location = parsed.match(/場所:\s*(.*)/)?.[1]?.trim() || "";
 const genre = parsed.match(/ジャンル:\s*(.*)/)?.[1]?.trim() || "";
 const keyword = parsed.match(/キーワード:\s*(.*)/)?.[1]?.trim() || "";
+const budget = parsed.match(/予算:\s*(.*)/)?.[1]?.trim() || ""; 
 
 await client.pushMessage(userId, {
   type: "text",
@@ -830,9 +833,9 @@ await client.pushMessage(userId, {
 
 // 🔁 検索条件を判定して、ジャンル検索 or 総合検索を分岐
 const genreCode = genreMap[genre] || "";
-const allShops = await fetchShops(location, genreCode); // ジャンルがあれば検索に活用、なければ "" で場所のみ
-
-if (allShops.length === 0) {
+const budgetCode = budgetMap[budget] || "";
+const filters = ""; 
+const allShops = await fetchShops(`${location} ${keyword || ""} ${filters || ""}`.trim(), genreCode, budgetCode);if (allShops.length === 0) {
   return client.replyMessage(event.replyToken, {
     type: "text",
     text: "条件に合うお店が見つかりませんでした🙏"
