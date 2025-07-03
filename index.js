@@ -139,9 +139,18 @@ const stripePlans = {
 
 
 
-// ✅ プランをユーザーが選択できるように修正
 app.post("/create-checkout-session", express.json(), async (req, res) => {
-  const { userId, plan } = req.body; // ← planを追加
+  const { userId, plan } = req.body;
+
+  // ======= 追加: 必須チェックとログ =======
+  console.log("🟢 /create-checkout-session called! userId:", userId, "plan:", plan);
+
+  // userId/planが空ならここで止める（これでWebhookエラーは絶対起きなくなる）
+  if (!userId || !plan) {
+    console.error("❌ userId または plan が未定義です");
+    return res.status(400).json({ error: "userIdまたはplanが指定されていません。" });
+  }
+  // ======= ここまで追加 =======
 
   if (!stripePlans[plan]) {
     return res.status(400).json({ error: "無効なプランです。" });
@@ -153,14 +162,17 @@ app.post("/create-checkout-session", express.json(), async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }], // 動的にpriceをセット
-        subscription_data: {
-        metadata: { lineUserId: userId, planId: priceId } // ← 🔥ここを追加🔥
+      line_items: [{ price: priceId, quantity: 1 }],
+      // 必ず正しい値をセット
+      metadata: { lineUserId: userId, planId: priceId },
+      subscription_data: {
+        metadata: { lineUserId: userId, planId: priceId }
       },
       success_url: "https://line-gourmet-bot.onrender.com/success",
-      cancel_url: "https://line-gourmet-bot.onrender.com/cancel",
-       metadata: { lineUserId: userId, planId: priceId },
+      cancel_url: "https://line-gourmet-bot.onrender.com/cancel"
     });
+
+    console.log("🟢 Stripe Checkout Session作成成功: sessionId=", session.id);
 
     res.json({ url: session.url });
   } catch (err) {
