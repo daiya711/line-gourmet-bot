@@ -87,7 +87,7 @@ app.post("/create-checkout-session", express.json(), async (req, res) => {
       },
       success_url: "https://line-gourmet-bot.onrender.com/success",
       cancel_url: "https://line-gourmet-bot.onrender.com/cancel",
-      metadata: { lineUserId: userId },
+       metadata: { lineUserId: userId, planId: priceId },
     });
 
     res.json({ url: session.url });
@@ -186,24 +186,27 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
 }
 
     case "customer.subscription.deleted":
-    case "customer.subscription.updated":{
-      const subscription = event.data.object;
-      const customerId = subscription.customer;
+   case "customer.subscription.updated": {
+  const subscription = event.data.object;
+  const customerId = subscription.customer;
+  const purchasedPlanId = subscription.metadata.planId || subscription.items.data[0].price.id;
 
-      if (subscription.status !== "active") {
-        await userDB.updateOne(
-          { stripeCustomerId: customerId },
-          {
-            $set: {
-              subscribed: false,
-              updatedAt: new Date()
-            }
-          }
-        );
-        console.log(`🚫 ユーザー（Customer ID: ${customerId}）をunsubscribedに更新しました`);
-      }
-      break;
-      }
+  if (subscription.status === "active") {
+    await userDB.updateOne(
+      { stripeCustomerId: customerId },
+      { $set: { subscribed: true, planId: purchasedPlanId, updatedAt: new Date() } }
+    );
+    console.log(`✅ プラン更新（Customer ID: ${customerId}）を反映しました`);
+  } else {
+    await userDB.updateOne(
+      { stripeCustomerId: customerId },
+      { $set: { subscribed: false, updatedAt: new Date() } }
+    );
+    console.log(`🚫 解約処理（Customer ID: ${customerId}）を反映しました`);
+  }
+  break;
+}
+
 
     default:
       console.log(`🤷‍♂️ 未処理のイベントタイプ ${event.type}`);
