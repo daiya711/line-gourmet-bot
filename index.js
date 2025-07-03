@@ -25,33 +25,40 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
   }
 
   switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object;
-      const lineUserId = session.metadata?.lineUserId;
-      const purchasedPlanId = session.metadata?.planId; // ← 必ずcheckout.sessionのmetadataから取得する
-      
-      if (!lineUserId || !purchasedPlanId) {
-        console.error("❌ metadata欠落エラー: lineUserIdまたはplanIdがありません");
-        return res.status(400).end();
-      }
+   case "checkout.session.completed": {
+  const session = event.data.object;
 
-      await userDB.updateOne(
-        { userId: lineUserId },
-        {
-          $set: {
-            subscribed: true,
-            stripeCustomerId: session.customer,
-            planId: purchasedPlanId, // ✅ sessionから取得したplanIdを必ず使用
-            usageCount: 0,
-            usageMonth: new Date().getMonth(),
-            updatedAt: new Date()
-          }
-        },
-        { upsert: true }
-      );
-      console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新（プラン: ${purchasedPlanId}）`);
-      break;
-    }
+  const subscriptionId = session.subscription;
+
+  // 🔥【重要】ここでSubscriptionを再取得してmetadataを得る
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  const lineUserId = subscription.metadata?.lineUserId;
+  const purchasedPlanId = subscription.metadata?.planId;
+
+  if (!lineUserId || !purchasedPlanId) {
+    console.error("❌ metadata欠落エラー: lineUserIdまたはplanIdがありません");
+    return res.status(400).end();
+  }
+
+  await userDB.updateOne(
+    { userId: lineUserId },
+    {
+      $set: {
+        subscribed: true,
+        stripeCustomerId: session.customer,
+        planId: purchasedPlanId,
+        usageCount: 0,
+        usageMonth: new Date().getMonth(),
+        updatedAt: new Date()
+      }
+    },
+    { upsert: true }
+  );
+  console.log(`✅ ユーザー ${lineUserId} をsubscribedに更新（プラン: ${purchasedPlanId}）`);
+  break;
+}
+
 
     case "customer.subscription.deleted":
     case "customer.subscription.updated": {
