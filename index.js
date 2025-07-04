@@ -250,6 +250,95 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
         // 🔥【ここに追加】🔥
         const userDoc = await userDB.findOne({ userId });
+
+        // ① userDocが存在しない場合（初回ユーザー）を先に処理
+if (!userDoc) {
+  await userDB.insertOne({
+    userId,
+    usageCount: 1,
+    subscribed: false,
+    previousStructure: null,
+    allShops: [],
+    shown: [],
+    original: userInput,
+    usageMonth: new Date().getMonth(),
+    updatedAt: new Date()
+  });
+  console.log("🆕 新規ユーザー登録：1回目無料で続行");
+} else {
+  // ② userDocが存在する場合（通常処理）
+  
+  let usageLimit = 1; // 無料ユーザーのデフォルト値
+  if (userDoc.subscribed) {
+    switch (userDoc.planId) {
+      case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
+        usageLimit = 20;
+        break;
+      case "price_1RgOITCE2c7uO9vor59pbAx2":
+        usageLimit = 40;
+        break;
+      case "price_1RgOJzCE2c7uO9voM5P9BmIH":
+        usageLimit = Infinity;
+        break;
+    }
+  }
+
+  const currentMonth = new Date().getMonth();
+  if (userDoc.usageMonth !== currentMonth) {
+    await userDB.updateOne(
+      { userId },
+      { $set: { usageCount: 0, usageMonth: currentMonth } }
+    );
+    userDoc.usageCount = 0; // リセットを反映
+  }
+
+ if (userDoc.usageCount >= usageLimit) {
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "ベーシック（月500円・20回）",
+            data: "action=selectPlan&plan=basic",
+            displayText: "ベーシックプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "スタンダード（月1000円・40回）",
+            data: "action=selectPlan&plan=standard",
+            displayText: "スタンダードプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "プレミアム（月2000円・無制限）",
+            data: "action=selectPlan&plan=premium",
+            displayText: "プレミアムプランを選択"
+          }
+        }
+      ]
+    }
+  });
+  return;
+}
+
+
+  await userDB.updateOne(
+    { userId },
+    { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+  );
+  console.log(`🟢 利用回数: ${userDoc.usageCount + 1}/${usageLimit}`);
+
+}
       
 
    // 初回（userDocが存在しない場合）
@@ -1037,96 +1126,6 @@ sessionStore[userId] = {
 
     return;
   }
-}
-
-
-// ① userDocが存在しない場合（初回ユーザー）を先に処理
-if (!userDoc) {
-  await userDB.insertOne({
-    userId,
-    usageCount: 1,
-    subscribed: false,
-    previousStructure: null,
-    allShops: [],
-    shown: [],
-    original: userInput,
-    usageMonth: new Date().getMonth(),
-    updatedAt: new Date()
-  });
-  console.log("🆕 新規ユーザー登録：1回目無料で続行");
-} else {
-  // ② userDocが存在する場合（通常処理）
-  
-  let usageLimit = 1; // 無料ユーザーのデフォルト値
-  if (userDoc.subscribed) {
-    switch (userDoc.planId) {
-      case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
-        usageLimit = 20;
-        break;
-      case "price_1RgOITCE2c7uO9vor59pbAx2":
-        usageLimit = 40;
-        break;
-      case "price_1RgOJzCE2c7uO9voM5P9BmIH":
-        usageLimit = Infinity;
-        break;
-    }
-  }
-
-  const currentMonth = new Date().getMonth();
-  if (userDoc.usageMonth !== currentMonth) {
-    await userDB.updateOne(
-      { userId },
-      { $set: { usageCount: 0, usageMonth: currentMonth } }
-    );
-    userDoc.usageCount = 0; // リセットを反映
-  }
-
- if (userDoc.usageCount >= usageLimit) {
-  await client.replyMessage(event.replyToken, {
-    type: "text",
-    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
-    quickReply: {
-      items: [
-        {
-          type: "action",
-          action: {
-            type: "postback",
-            label: "ベーシック（月500円・20回）",
-            data: "action=selectPlan&plan=basic",
-            displayText: "ベーシックプランを選択"
-          }
-        },
-        {
-          type: "action",
-          action: {
-            type: "postback",
-            label: "スタンダード（月1000円・40回）",
-            data: "action=selectPlan&plan=standard",
-            displayText: "スタンダードプランを選択"
-          }
-        },
-        {
-          type: "action",
-          action: {
-            type: "postback",
-            label: "プレミアム（月2000円・無制限）",
-            data: "action=selectPlan&plan=premium",
-            displayText: "プレミアムプランを選択"
-          }
-        }
-      ]
-    }
-  });
-  return;
-}
-
-
-  await userDB.updateOne(
-    { userId },
-    { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-  );
-  console.log(`🟢 利用回数: ${userDoc.usageCount + 1}/${usageLimit}`);
-
 }
    }));
        res.status(200).end(); // LINEへの正常レスポンス
