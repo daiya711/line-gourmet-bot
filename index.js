@@ -867,7 +867,7 @@ if (allShops.length === 0) {
 }
 
 const shopList = allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
-const filterPrompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな1件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+const filterPrompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな3件を選んでください。できれば「${keyword}」の要素が入っているものを優先してください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
 
 const gptPick = await openai.chat.completions.create({
   model: "gpt-4",
