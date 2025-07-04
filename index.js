@@ -629,7 +629,7 @@ ${shopList}
     messages: [{ role: "system", content: prompt }]
   });
 
- const responseText = gptPick.choices[0].message.content;
+const responseText = gptPick.choices[0].message.content;
 
 console.log("✅ GPTレスポンス:", responseText);
 
@@ -645,8 +645,8 @@ if (!nameMatch) {
   });
 }
 
-const shopName = nameMatch[1].trim();
-const selectedShop = previous.allShops.find(s => s.name.trim() === shopName);
+const shopName = nameMatch[1].trim().replace(/\s+/g, "");
+const selectedShop = previous.allShops.find(s => s.name.replace(/\s+/g, "").includes(shopName));
 
 if (!selectedShop) {
   console.error(`❌ 選定されたお店「${shopName}」が見つかりませんでした。`);
@@ -666,6 +666,7 @@ sessionStore[userId] = {
   shown: previous.shown.concat(selectedShop.name),
   previousStructure: finalStructure
 };
+
 
 
   const bubble = {
