@@ -501,7 +501,7 @@ if (
     userInput.includes("個室") ||
     userInput.includes("夜") ||
     userInput.includes("おしゃれ") ||
-    userInput.includes("雰囲気の良い") ||
+    userInput.includes("雰囲気") ||
     userInput.includes("映え") ||
     userInput.includes("インスタ映え") ||
     userInput.includes("美味しい") ||
@@ -628,8 +628,11 @@ ${shopList}
 
   const responseText = gptPick.choices[0].message.content;
 
+  console.log("✅ GPTレスポンス:", responseText);
+
+
   // GPTレスポンスを正しく解析
-  const nameMatch = responseText.match(/【店舗名】《(.+?)》/);
+  const nameMatch = responseText.match(/【紹介文】[\s\S]*?《(.+?)》/);
   const introMatch = responseText.match(/【紹介文】([\s\S]*?)【おすすめの一品】/);
   const itemMatch = responseText.match(/【おすすめの一品】([\s\S]*?)【タグ】/);
   const tagMatch = responseText.match(/【タグ】([\s\S]*)/);
