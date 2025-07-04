@@ -632,9 +632,9 @@ ${shopList}
 
 
   // GPTレスポンスを正しく解析
-  const nameMatch = responseText.match(/【紹介文】[\s\S]*?《(.+?)》/);
-  const introMatch = responseText.match(/【紹介文】([\s\S]*?)【おすすめの一品】/);
-  const itemMatch = responseText.match(/【おすすめの一品】([\s\S]*?)【タグ】/);
+　const nameMatch = responseText.match(/【紹介文】《店舗名》\s*(.+?)\s/);
+  const introMatch = responseText.match(/【紹介文】《店舗名》.+?\s([\s\S]*?)【おすすめの一品】/);
+  const itemMatch = responseText.match(/【おすすめの一品】\s*《?(.+?)》?\s*([\s\S]*?)【タグ】/);
   const tagMatch = responseText.match(/【タグ】([\s\S]*)/);
 
   if (!nameMatch) {
