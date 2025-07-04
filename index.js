@@ -757,7 +757,6 @@ ${shopList}`;
 const responseText = gptRes.choices[0].message.content;
 
 // 各項目を明確に抽出（店舗名、紹介文、おすすめの一品、タグ）
-const nameMatch = responseText.match(/【店舗名】\s*《(.+?)》/);
 const introMatch = responseText.match(/【紹介文】([\s\S]*?)【おすすめの一品】/);
 const itemMatch = responseText.match(/【おすすめの一品】([\s\S]*?)【タグ】/);
 const tagMatch = responseText.match(/【タグ】([\s\S]*)/);
