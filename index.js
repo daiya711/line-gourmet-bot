@@ -889,7 +889,6 @@ const detailPrompt = `
 
 ▼出力フォーマット（各店舗必ずこの形式）：
 【店舗】
-《店名》▼出力フォーマット：
 【紹介文】
 ・店名のあとには必ず改行し、次の説明文へ
 ・顔文字や絵文字も1つ添えると魅力的です
@@ -1012,6 +1011,7 @@ sessionStore[userId] = {
   if (postbackData.get("action") === "selectPlan") {
     const planKey = postbackData.get("plan");
     const userId = event.source.userId;  // userId を取得（重要）
+      const userDoc = await userDB.findOne({ userId });
 
     try {
       // 🔥 ExpressサーバーのAPIを呼んで動的に決済リンクを生成
