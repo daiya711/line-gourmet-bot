@@ -609,7 +609,7 @@ if (
 以下の店舗リストから希望に合うお店を1件選び、【紹介文】【おすすめの一品】【タグ】をユーザーの印象に残るよう魅力的に自然な日本語で簡潔に生成してください。
 
 ▼出力フォーマット：
-【店舗】
+【店舗名】
 【紹介文】
 ・店名のあとには必ず改行し、次の説明文へ
 ・顔文字や絵文字も1つ添えると魅力的です
@@ -629,43 +629,44 @@ ${shopList}
     messages: [{ role: "system", content: prompt }]
   });
 
-  const responseText = gptPick.choices[0].message.content;
+ const responseText = gptPick.choices[0].message.content;
 
-  console.log("✅ GPTレスポンス:", responseText);
+console.log("✅ GPTレスポンス:", responseText);
 
+const nameMatch = responseText.match(/【店舗名】\s*《(.+?)》/);
+const introMatch = responseText.match(/【紹介文】\s*([\s\S]*?)【おすすめの一品】/);
+const itemMatch = responseText.match(/【おすすめの一品】\s*([\s\S]*?)【タグ】/);
+const tagMatch = responseText.match(/【タグ】\s*(.+)/);
 
-  // GPTレスポンスを正しく解析
-  const introMatch = shopResponse.match(/【紹介文】\s*([\s\S]*?)\s*(?=【|$)/);
-  const itemMatch = shopResponse.match(/【おすすめの一品】\s*([\s\S]*?)\s*(?=【|$)/);
-  const tagMatch = shopResponse.match(/【タグ】\s*([\s\S]*?)\s*(?=【|$)/);
+if (!nameMatch) {
+  return client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "条件に合うお店が見つかりませんでした🙏"
+  });
+}
 
+const shopName = nameMatch[1].trim();
+const selectedShop = previous.allShops.find(s => s.name.trim() === shopName);
 
-  if (!nameMatch) {
-    return client.replyMessage(event.replyToken, {
-      type: "text",
-      text: "条件に合うお店が見つかりませんでした🙏"
-    });
-  }
+if (!selectedShop) {
+  console.error(`❌ 選定されたお店「${shopName}」が見つかりませんでした。`);
+  return client.replyMessage(event.replyToken, {
+    type: "text",
+    text: `選定されたお店「${shopName}」が見つかりませんでした🙏`
+  });
+}
 
-  const selectedShop = previous.allShops.find(s => s.name === nameMatch[1].trim());
+selectedShop.generatedIntro = introMatch?.[1]?.trim() || "雰囲気の良いおすすめ店です。";
+selectedShop.generatedItem = itemMatch?.[1]?.trim() || "料理のおすすめ情報は取得できませんでした。";
+selectedShop.generatedTags = tagMatch?.[1]?.trim() || "#おすすめ";
 
-  if (!selectedShop) {
-    return client.replyMessage(event.replyToken, {
-      type: "text",
-      text: "選定されたお店が見つかりませんでした🙏"
-    });
-  }
+sessionStore[userId] = {
+  original: `${previous.original} ${userInput}`,
+  allShops: previous.allShops,
+  shown: previous.shown.concat(selectedShop.name),
+  previousStructure: finalStructure
+};
 
-  selectedShop.generatedIntro = introMatch?.[1]?.trim() || "雰囲気の良いおすすめ店です。";
-  selectedShop.generatedItem = itemMatch?.[1]?.trim() || "料理のおすすめ情報は取得できませんでした。";
-  selectedShop.generatedTags = tagMatch?.[1]?.trim() || "#おすすめ";
-
-  sessionStore[userId] = {
-    original: `${previous.original} ${userInput}`,
-    allShops: previous.allShops,
-    shown: previous.shown.concat(selectedShop.name),
-    previousStructure: finalStructure
-  };
 
   const bubble = {
     type: "bubble",
