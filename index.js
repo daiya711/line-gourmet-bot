@@ -609,9 +609,12 @@ if (
 以下の店舗リストから希望に合うお店を1件選び、【紹介文】【おすすめの一品】【タグ】をユーザーの印象に残るよう魅力的に自然な日本語で簡潔に生成してください。
 
 ▼出力フォーマット：
-【店舗名】《店名》
+【店舗】
 【紹介文】
-2行以内・絵文字使用可
+・店名のあとには必ず改行し、次の説明文へ
+・顔文字や絵文字も1つ添えると魅力的です
+・全体で2行以内を目安にまとめてください
+・店名を《店名》で囲ってください
 【おすすめの一品】
 1行以内で魅力的に
 【タグ】
@@ -632,10 +635,10 @@ ${shopList}
 
 
   // GPTレスポンスを正しく解析
-　const nameMatch = responseText.match(/【紹介文】《店舗名》\s*(.+?)\s/);
-  const introMatch = responseText.match(/【紹介文】《店舗名》.+?\s([\s\S]*?)【おすすめの一品】/);
-  const itemMatch = responseText.match(/【おすすめの一品】\s*《?(.+?)》?\s*([\s\S]*?)【タグ】/);
-  const tagMatch = responseText.match(/【タグ】([\s\S]*)/);
+  const introMatch = shopResponse.match(/【紹介文】\s*([\s\S]*?)\s*(?=【|$)/);
+  const itemMatch = shopResponse.match(/【おすすめの一品】\s*([\s\S]*?)\s*(?=【|$)/);
+  const tagMatch = shopResponse.match(/【タグ】\s*([\s\S]*?)\s*(?=【|$)/);
+
 
   if (!nameMatch) {
     return client.replyMessage(event.replyToken, {
