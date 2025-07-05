@@ -1209,74 +1209,86 @@ ${shopList}
     messages: [{ role: "system", content: detailPrompt }]
   });
 
-   console.log("✅ GPTレスポンス取得成功:", gptResponse.choices[0].message.content);
+ const shopsDetails = gptResponse.choices[0].message.content.split("【店舗】").slice(1).map((detail) => {
+  const nameMatch = detail.match(/《(.+?)》/);
+  const introMatch = detail.match(/【紹介文】\s*([\s\S]*?)【おすすめの一品】/);
+  const itemMatch = detail.match(/【おすすめの一品】\s*([\s\S]*?)【タグ】/);
+  const tagMatch = detail.match(/【タグ】\s*(.+)/);
 
+  const shopName = nameMatch ? nameMatch[1].trim() : "店名未取得";
+  const foundShop = allShops.find(s => s.name.includes(shopName));
 
-  const shopsDetails = gptResponse.choices[0].message.content.split("【店舗名】").slice(1).map((detail, idx) => {
-    const nameMatch = detail.match(/《(.+?)》/);
-    const introMatch = detail.match(/【紹介文】\s*([\s\S]*?)【おすすめの一品】/);
-    const itemMatch = detail.match(/【おすすめの一品】\s*([\s\S]*?)【タグ】/);
-    const tagMatch = detail.match(/【タグ】\s*(.+)/);
+  if (!foundShop) {
+    console.error(`❌ 店舗「${shopName}」が見つかりませんでした。`);
+    return null;
+  }
 
-    return {
-      ...allShops[idx],
-      generatedIntro: introMatch?.[1]?.trim() || "雰囲気の良いおすすめ店です。",
-      generatedItem: itemMatch?.[1]?.trim() || "おすすめ情報なし",
-      generatedTags: tagMatch?.[1]?.trim() || "#おすすめ"
-    };
-  });
-
-  const bubbles = shopsDetails.map(shop => ({
-    type: "bubble",
-    hero: {
-      type: "image",
-      url: shop.photo.pc.l,
-      size: "full",
-      aspectRatio: "4:3",
-      aspectMode: "cover"
-    },
-    body: {
-      type: "box",
-      layout: "vertical",
-      spacing: "xs",
-      contents: [
-        { type: "text", text: shop.name, weight: "bold", size: "md", wrap: true },
-        { type: "text", text: shop.generatedTags, size: "sm", color: "#555555", wrap: true },
-        { type: "text", text: `📖【紹介文】\n${shop.generatedIntro}`, size: "sm", wrap: true },
-        { type: "text", text: `🍴【おすすめの一品】\n${shop.generatedItem}`, size: "sm", wrap: true },
-        { type: "text", text: `💴 ${shop.budget.name}`, size: "sm", color: "#ff6600" },
-        { type: "text", text: shop.address || "📍 住所情報なし", size: "sm", color: "#888888", wrap: true }
-      ]
-    },
-    footer: {
-      type: "box",
-      layout: "vertical",
-      contents: [
-        {
-          type: "button",
-          style: "primary",
-          action: { type: "uri", label: "詳細を見る", uri: shop.urls.pc }
-        }
-      ]
-    }
-  }));
-
-  sessionStore[userId] = {
-    original: userInput,
-    allShops,
-    shown: shopsDetails.map(s => s.name),
-    previousStructure: { location, genre, keyword }
+  return {
+    ...foundShop,
+    generatedIntro: introMatch?.[1]?.trim() || "雰囲気の良いおすすめ店です。",
+    generatedItem: itemMatch?.[1]?.trim() || "おすすめ情報なし",
+    generatedTags: tagMatch?.[1]?.trim() || "#おすすめ"
   };
+}).filter(Boolean); // 必ずnullを除外して有効な店舗のみ抽出
 
-  await userDB.updateOne({ userId }, { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } });
-
+if (shopsDetails.length === 0) {
   return client.replyMessage(event.replyToken, {
-    type: "flex",
-    altText: "ご希望のお店をご紹介します！",
-    contents: { type: "carousel", contents: bubbles }
+    type: "text",
+    text: "条件に合うお店が見つかりませんでした🙏"
   });
 }
 
+const bubbles = shopsDetails.map(shop => ({
+  type: "bubble",
+  hero: {
+    type: "image",
+    url: shop.photo.pc.l,
+    size: "full",
+    aspectRatio: "4:3",
+    aspectMode: "cover"
+  },
+  body: {
+    type: "box",
+    layout: "vertical",
+    spacing: "xs",
+    contents: [
+      { type: "text", text: shop.name, weight: "bold", size: "md", wrap: true },
+      { type: "text", text: shop.generatedTags, size: "sm", color: "#555555", wrap: true },
+      { type: "text", text: `📖【紹介文】\n${shop.generatedIntro}`, size: "sm", wrap: true },
+      { type: "text", text: `🍴【おすすめの一品】\n${shop.generatedItem}`, size: "sm", wrap: true },
+      { type: "text", text: `💴 ${shop.budget.name}`, size: "sm", color: "#ff6600" },
+      { type: "text", text: shop.address || "📍 住所情報なし", size: "sm", color: "#888888", wrap: true }
+    ]
+  },
+  footer: {
+    type: "box",
+    layout: "vertical",
+    contents: [
+      {
+        type: "button",
+        style: "primary",
+        action: { type: "uri", label: "詳細を見る", uri: shop.urls.pc }
+      }
+    ]
+  }
+}));
+
+sessionStore[userId] = {
+  original: userInput,
+  allShops,
+  shown: shopsDetails.map(s => s.name),
+  previousStructure: { location, genre, keyword }
+};
+
+await userDB.updateOne({ userId }, { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } });
+
+// 店舗数に応じてcarouselまたは単一bubbleを出し分け
+return client.replyMessage(event.replyToken, {
+  type: "flex",
+  altText: "ご希望のお店をご紹介します！",
+  contents: bubbles.length > 1 ? { type: "carousel", contents: bubbles } : bubbles[0]
+});
+  }
 
     // 🔥 作業４（今回追加したpostback処理）
        }  else if (event.type === "postback") {
