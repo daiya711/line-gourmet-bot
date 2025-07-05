@@ -1103,7 +1103,7 @@ sessionStore[userId] = {
 
       else {
   // 🔥【完全新規条件を再検索】新規入力を検出しsessionStoreをリセット
-  if (!sessionStore[userId]) {
+  
   delete sessionStore[userId];  // 安全のため再度明示的にリセット
   
   const userDocUpdated = await userDB.findOne({ userId });
@@ -1271,7 +1271,7 @@ ${shopList}
     contents: { type: "carousel", contents: bubbles }
   });
 }
-}
+
 
     // 🔥 作業４（今回追加したpostback処理）
        }  else if (event.type === "postback") {
