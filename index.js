@@ -868,10 +868,6 @@ if (!sessionStore[userId]) {
 
 // ✅ 通常の初回検索リクエスト（場所＋ジャンル＋キーワードを柔軟に対応）
 // 🔥【利用回数カウント】（各ブロックの先頭に入れる）
-await userDB.updateOne(
-  { userId },
-  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-);
 
 const userDocUpdated = await userDB.findOne({ userId });
 
@@ -1076,6 +1072,11 @@ sessionStore[userId] = {
             ]
           }
         }));
+        await userDB.updateOne(
+  { userId },
+  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+);
+
         await client.replyMessage(event.replyToken, [
           {
             type: "flex",
