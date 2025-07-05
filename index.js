@@ -658,7 +658,7 @@ sessionStore[userId] = {
 }
 
 // ✅ 完全版「違う店」修正版コード
-if ((userInput.includes("違う") || userInput.includes("他")) && sessionStore[userId]) {
+if ((userInput.includes("違う") || userInput.includes("他")|| userInput.includes("次")) && sessionStore[userId]) {
   // 🔥【利用回数カウント】（各ブロックの先頭に入れる）
 
 const userDocUpdated = await userDB.findOne({ userId });
@@ -1103,11 +1103,12 @@ sessionStore[userId] = {
 
       else {
   // 🔥【完全新規条件を再検索】新規入力を検出しsessionStoreをリセット
-  delete sessionStore[userId];
-
+  if (!sessionStore[userId]) {
+  delete sessionStore[userId];  // 安全のため再度明示的にリセット
+  
   const userDocUpdated = await userDB.findOne({ userId });
 
-  let usageLimit = 1; // 無料ユーザーのデフォルト値
+  let usageLimit = 1; 
   if (userDocUpdated.subscribed) {
     switch (userDocUpdated.planId) {
       case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
@@ -1164,9 +1165,8 @@ sessionStore[userId] = {
 
   const genreCode = genreMap[genre] || "";
   const budgetCode = budgetMap[budget] || "";
-  const filters = "";
 
-  const allShops = await fetchShops(`${location} ${keyword || ""} ${filters}`.trim(), genreCode, budgetCode);
+  const allShops = await fetchShops(`${location} ${keyword || ""}`.trim(), genreCode, budgetCode);
 
   if (allShops.length === 0) {
     return client.replyMessage(event.replyToken, {
@@ -1175,56 +1175,103 @@ sessionStore[userId] = {
     });
   }
 
-  const shopList = allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
+  const shopList = allShops
+    .map(s => `店名: ${s.name} / ジャンル: ${s.genre.name} / 紹介: ${s.catch}`)
+    .join("\n");
 
-  const filterPrompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな1件を選んでください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+  const detailPrompt = `
+ユーザーの希望は「${userInput}」です。
+以下の店舗リストから最適なお店を最大1件選び、それぞれ【紹介文】【おすすめの一品】【タグ】をユーザーの印象に残るよう魅力的に自然な日本語で簡潔に生成してください。また、ユーザーが一目で見やすいように紹介文を工夫してください。
 
-  const gptPick = await openai.chat.completions.create({
+▼出力フォーマット（各店舗必ずこの形式）：
+【店舗】
+【紹介文】
+・店名のあとには必ず改行し、次の説明文へ
+・顔文字や絵文字も1つ添えると魅力的です
+・全体で2行以内を目安にまとめてください
+・店名を《店名》で囲ってください
+
+【おすすめの一品】
+・料理名のあとに必ず改行し、次の説明文へ
+・全体で1行以内を目安にまとめてください
+・料理名を《料理名》で囲ってください
+【タグ】
+飲食店情報から、Instagram風のハッシュタグとして使える、もっとも最適なそのお店の特徴をキーワードを3つ日本語で抽出してください。\n#記号をつけて1行で出力してください（例：#デート #夜景 #コスパ）
+
+店舗リスト:
+${shopList}
+`;
+
+  const gptResponse = await openai.chat.completions.create({
     model: "gpt-4",
-    messages: [{ role: "system", content: filterPrompt }, { role: "user", content: shopList }]
+    messages: [{ role: "system", content: detailPrompt }]
   });
 
-  const selectedNames = extractShopNames(gptPick.choices[0].message.content);
-  const selected = allShops.filter(s => selectedNames.includes(s.name));
+  const shopsDetails = gptResponse.choices[0].message.content.split("【店舗名】").slice(1).map((detail, idx) => {
+    const nameMatch = detail.match(/《(.+?)》/);
+    const introMatch = detail.match(/【紹介文】\s*([\s\S]*?)【おすすめの一品】/);
+    const itemMatch = detail.match(/【おすすめの一品】\s*([\s\S]*?)【タグ】/);
+    const tagMatch = detail.match(/【タグ】\s*(.+)/);
 
-  if (selected.length === 0) {
-    return client.replyMessage(event.replyToken, { type: "text", text: "条件に近いお店が見つかりませんでした🙏" });
-  }
+    return {
+      ...allShops[idx],
+      generatedIntro: introMatch?.[1]?.trim() || "雰囲気の良いおすすめ店です。",
+      generatedItem: itemMatch?.[1]?.trim() || "おすすめ情報なし",
+      generatedTags: tagMatch?.[1]?.trim() || "#おすすめ"
+    };
+  });
 
-  const bubbles = selected.map(shop => ({
+  const bubbles = shopsDetails.map(shop => ({
     type: "bubble",
-    hero: { type: "image", url: shop.photo.pc.l, size: "full", aspectRatio: "4:3", aspectMode: "cover" },
+    hero: {
+      type: "image",
+      url: shop.photo.pc.l,
+      size: "full",
+      aspectRatio: "4:3",
+      aspectMode: "cover"
+    },
     body: {
       type: "box",
       layout: "vertical",
       spacing: "xs",
       contents: [
         { type: "text", text: shop.name, weight: "bold", size: "md", wrap: true },
+        { type: "text", text: shop.generatedTags, size: "sm", color: "#555555", wrap: true },
+        { type: "text", text: `📖【紹介文】\n${shop.generatedIntro}`, size: "sm", wrap: true },
+        { type: "text", text: `🍴【おすすめの一品】\n${shop.generatedItem}`, size: "sm", wrap: true },
         { type: "text", text: `💴 ${shop.budget.name}`, size: "sm", color: "#ff6600" },
         { type: "text", text: shop.address || "📍 住所情報なし", size: "sm", color: "#888888", wrap: true }
       ]
     },
     footer: {
-      type: "box", layout: "vertical", spacing: "sm", contents: [{ type: "button", style: "primary", action: { type: "uri", label: "詳細を見る", uri: shop.urls.pc } }]
+      type: "box",
+      layout: "vertical",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          action: { type: "uri", label: "詳細を見る", uri: shop.urls.pc }
+        }
+      ]
     }
   }));
-
-  await userDB.updateOne({ userId }, { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } });
 
   sessionStore[userId] = {
     original: userInput,
     allShops,
-    shown: selected.map(s => s.name),
+    shown: shopsDetails.map(s => s.name),
     previousStructure: { location, genre, keyword }
   };
 
+  await userDB.updateOne({ userId }, { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } });
+
   return client.replyMessage(event.replyToken, {
     type: "flex",
-    altText: "新しい条件でお店をご紹介します！",
+    altText: "ご希望のお店をご紹介します！",
     contents: { type: "carousel", contents: bubbles }
   });
 }
-
+}
 
     // 🔥 作業４（今回追加したpostback処理）
        }  else if (event.type === "postback") {
