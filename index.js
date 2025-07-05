@@ -441,10 +441,6 @@ if (
   sessionStore[userId]
 ){
 // 🔥【利用回数カウント】（各ブロックの先頭に入れる）
-await userDB.updateOne(
-  { userId },
-  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-);
 
 const userDocUpdated = await userDB.findOne({ userId });
 
@@ -654,6 +650,10 @@ sessionStore[userId] = {
       }]
     }
   };
+  await userDB.updateOne(
+  { userId },
+  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+);
 
   return client.replyMessage(event.replyToken, {
     type: "flex",
@@ -665,10 +665,6 @@ sessionStore[userId] = {
 // ✅ 完全版「違う店」修正版コード
 if ((userInput.includes("違う") || userInput.includes("他")) && sessionStore[userId]) {
   // 🔥【利用回数カウント】（各ブロックの先頭に入れる）
-await userDB.updateOne(
-  { userId },
-  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-);
 
 const userDocUpdated = await userDB.findOne({ userId });
 
@@ -856,6 +852,10 @@ ${shopList}`;
       ]
     }
   };
+  await userDB.updateOne(
+  { userId },
+  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+);
 
   return client.replyMessage(event.replyToken, {
     type: "flex",
@@ -1072,10 +1072,11 @@ sessionStore[userId] = {
             ]
           }
         }));
-        await userDB.updateOne(
+ await userDB.updateOne(
   { userId },
   { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-);
+)
+
 
         await client.replyMessage(event.replyToken, [
           {
@@ -1104,6 +1105,131 @@ sessionStore[userId] = {
           }
         ]);
       }
+
+      else {
+  // 🔥【完全新規条件を再検索】新規入力を検出しsessionStoreをリセット
+  delete sessionStore[userId];
+
+  const userDocUpdated = await userDB.findOne({ userId });
+
+  let usageLimit = 1; // 無料ユーザーのデフォルト値
+  if (userDocUpdated.subscribed) {
+    switch (userDocUpdated.planId) {
+      case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
+        usageLimit = 20;
+        break;
+      case "price_1RgOITCE2c7uO9vor59pbAx2":
+        usageLimit = 40;
+        break;
+      case "price_1RgOJzCE2c7uO9voM5P9BmIH":
+        usageLimit = Infinity;
+        break;
+    }
+  }
+
+  if (userDocUpdated.usageCount >= usageLimit) {
+    return client.replyMessage(event.replyToken, {
+      type: "text",
+      text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
+      quickReply: {
+        items: Object.entries(stripePlans).map(([planKey, details]) => ({
+          type: "action",
+          action: {
+            type: "postback",
+            label: details.label,
+            data: `action=selectPlan&plan=${planKey}`,
+            displayText: `${details.label}を選択`
+          }
+        }))
+      }
+    });
+  }
+
+  await client.pushMessage(userId, {
+    type: "text",
+    text: "🔎 ご希望に合うお店を検索しています…\n時間がかかる場合がございます。\n少しお待ちください🙇‍♂️"
+  });
+
+  const gptExtractInitial = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      {
+        role: "system",
+        content: `次の日本語文から以下を抽出してください：\n場所:\nジャンル:\n予算:\nキーワード:\nキーワード候補として以下を参考にしてください:\n${keywordSuggestions.join(", ")}`
+      },
+      { role: "user", content: userInput }
+    ]
+  });
+
+  const parsed = gptExtractInitial.choices[0].message.content;
+  const location = parsed.match(/場所:\s*(.*)/)?.[1]?.trim() || "";
+  const genre = parsed.match(/ジャンル:\s*(.*)/)?.[1]?.trim() || "";
+  const keyword = parsed.match(/キーワード:\s*(.*)/)?.[1]?.trim() || "";
+  const budget = parsed.match(/予算:\s*(.*)/)?.[1]?.trim() || "";
+
+  const genreCode = genreMap[genre] || "";
+  const budgetCode = budgetMap[budget] || "";
+  const filters = "";
+
+  const allShops = await fetchShops(`${location} ${keyword || ""} ${filters}`.trim(), genreCode, budgetCode);
+
+  if (allShops.length === 0) {
+    return client.replyMessage(event.replyToken, {
+      type: "text",
+      text: "条件に合うお店が見つかりませんでした🙏"
+    });
+  }
+
+  const shopList = allShops.map(s => `店名: ${s.name} / 紹介: ${s.catch}`).join("\n");
+
+  const filterPrompt = `ユーザーの希望は「${userInput}」です。以下のお店から希望に合いそうな1件を選んでください。\n形式：\n- 店名: ○○○\n- 理由: ○○○`;
+
+  const gptPick = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [{ role: "system", content: filterPrompt }, { role: "user", content: shopList }]
+  });
+
+  const selectedNames = extractShopNames(gptPick.choices[0].message.content);
+  const selected = allShops.filter(s => selectedNames.includes(s.name));
+
+  if (selected.length === 0) {
+    return client.replyMessage(event.replyToken, { type: "text", text: "条件に近いお店が見つかりませんでした🙏" });
+  }
+
+  const bubbles = selected.map(shop => ({
+    type: "bubble",
+    hero: { type: "image", url: shop.photo.pc.l, size: "full", aspectRatio: "4:3", aspectMode: "cover" },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: shop.name, weight: "bold", size: "md", wrap: true },
+        { type: "text", text: `💴 ${shop.budget.name}`, size: "sm", color: "#ff6600" },
+        { type: "text", text: shop.address || "📍 住所情報なし", size: "sm", color: "#888888", wrap: true }
+      ]
+    },
+    footer: {
+      type: "box", layout: "vertical", spacing: "sm", contents: [{ type: "button", style: "primary", action: { type: "uri", label: "詳細を見る", uri: shop.urls.pc } }]
+    }
+  }));
+
+  await userDB.updateOne({ userId }, { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } });
+
+  sessionStore[userId] = {
+    original: userInput,
+    allShops,
+    shown: selected.map(s => s.name),
+    previousStructure: { location, genre, keyword }
+  };
+
+  return client.replyMessage(event.replyToken, {
+    type: "flex",
+    altText: "新しい条件でお店をご紹介します！",
+    contents: { type: "carousel", contents: bubbles }
+  });
+}
+
 
     // 🔥 作業４（今回追加したpostback処理）
        }  else if (event.type === "postback") {
