@@ -1175,6 +1175,8 @@ sessionStore[userId] = {
     });
   }
 
+  console.log("🟢 GPTへのプロンプトを生成します");
+
   const shopList = allShops
     .map(s => `店名: ${s.name} / ジャンル: ${s.genre.name} / 紹介: ${s.catch}`)
     .join("\n");
@@ -1206,6 +1208,9 @@ ${shopList}
     model: "gpt-4",
     messages: [{ role: "system", content: detailPrompt }]
   });
+
+   console.log("✅ GPTレスポンス取得成功:", gptResponse.choices[0].message.content);
+
 
   const shopsDetails = gptResponse.choices[0].message.content.split("【店舗名】").slice(1).map((detail, idx) => {
     const nameMatch = detail.match(/《(.+?)》/);
