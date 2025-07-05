@@ -366,12 +366,7 @@ if (userDoc.subscribed) {
       }
     });
     return;
-  } else {
-    await userDB.updateOne(
-      { userId },
-      { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-    );
-  }
+  } 
 }
 
 
