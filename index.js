@@ -291,121 +291,7 @@ if (!userDoc) {
     );
     userDoc.usageCount = 0; // リセットを反映
   }
-
- if (userDoc.usageCount >= usageLimit) {
-  await client.replyMessage(event.replyToken, {
-    type: "text",
-    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
-    quickReply: {
-      items: [
-        {
-          type: "action",
-          action: {
-            type: "postback",
-            label: "ベーシック（月500円・20回）",
-            data: "action=selectPlan&plan=basic",
-            displayText: "ベーシックプランを選択"
-          }
-        },
-        {
-          type: "action",
-          action: {
-            type: "postback",
-            label: "スタンダード（月1000円・40回）",
-            data: "action=selectPlan&plan=standard",
-            displayText: "スタンダードプランを選択"
-          }
-        },
-        {
-          type: "action",
-          action: {
-            type: "postback",
-            label: "プレミアム（月2000円・無制限）",
-            data: "action=selectPlan&plan=premium",
-            displayText: "プレミアムプランを選択"
-          }
-        }
-      ]
-    }
-  });
-  return;
-}
-
-
-  await userDB.updateOne(
-    { userId },
-    { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-  );
-  console.log(`🟢 利用回数: ${userDoc.usageCount + 1}/${usageLimit}`);
-
-}
-      
-
-   // 初回（userDocが存在しない場合）
-        if (!userDoc) {
-          await userDB.insertOne({
-            userId,
-            usageCount: 1, // 初回利用カウント
-            subscribed: false,
-            usageMonth: new Date().getMonth(),
-            updatedAt: new Date()
-          });
-
-          await client.replyMessage(event.replyToken, {
-            type: "text",
-            text: "🔰 初回は無料でご利用いただけます！ご希望のお店をお伝えください。"
-          });
-          return; // 初回終了（初回はここでリターン）
-        }
-
-        // 2回目以降
-        if (!userDoc.subscribed) { // 未サブスクユーザーの処理
-          if (userDoc.usageCount >= 1) { // 既に1回使用済みの場合
-            await client.replyMessage(event.replyToken, {
-              type: "text",
-              text: "🔒 無料でのご利用は1回のみです。引き続き利用するには、以下からプランをお選びください。",
-              quickReply: {
-                items: [
-                  {
-                    type: "action",
-                    action: {
-                      type: "postback",
-                      label: "ベーシック（月500円・20回）",
-                      data: "action=selectPlan&plan=basic",
-                      displayText: "ベーシックプランを選択"
-                    }
-                  },
-                  {
-                    type: "action",
-                    action: {
-                      type: "postback",
-                      label: "スタンダード（月1000円・40回）",
-                      data: "action=selectPlan&plan=standard",
-                      displayText: "スタンダードプランを選択"
-                    }
-                  },
-                  {
-                    type: "action",
-                    action: {
-                      type: "postback",
-                      label: "プレミアム（月2000円・無制限）",
-                      data: "action=selectPlan&plan=premium",
-                      displayText: "プレミアムプランを選択"
-                    }
-                  }
-                ]
-              }
-            });
-            return; // 無料使用回数を超えたので、ここでリターン
-          } else {
-            // 2回目以降だがまだ無料回数内（今回の要件だとここは不要だが安全策）
-            await userDB.updateOne(
-              { userId },
-              { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
-            );
-          }
-        }
-
+ }
      
 // 🔥 まずは【解約・キャンセル】のチェックを最優先
 if (userInput.includes("解約") || userInput.includes("キャンセル")) {
@@ -553,8 +439,73 @@ if (
     userInput.includes("貸切")
   ) &&
   sessionStore[userId]
-)
-{
+){
+// 🔥【利用回数カウント】（各ブロックの先頭に入れる）
+await userDB.updateOne(
+  { userId },
+  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+);
+
+const userDocUpdated = await userDB.findOne({ userId });
+
+let usageLimit = 1; // 無料ユーザーのデフォルト値
+if (userDocUpdated.subscribed) {
+  switch (userDocUpdated.planId) {
+    case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
+      usageLimit = 20;
+      break;
+    case "price_1RgOITCE2c7uO9vor59pbAx2":
+      usageLimit = 40;
+      break;
+    case "price_1RgOJzCE2c7uO9voM5P9BmIH":
+      usageLimit = Infinity;
+      break;
+  }
+}
+
+// 利用上限を超えた場合の処理
+if (userDocUpdated.usageCount > usageLimit) {
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "ベーシック（月500円・20回）",
+            data: "action=selectPlan&plan=basic",
+            displayText: "ベーシックプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "スタンダード（月1000円・40回）",
+            data: "action=selectPlan&plan=standard",
+            displayText: "スタンダードプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "プレミアム（月2000円・無制限）",
+            data: "action=selectPlan&plan=premium",
+            displayText: "プレミアムプランを選択"
+          }
+        }
+      ]
+    }
+  });
+  return;
+}
+
+console.log(`🟢 利用回数: ${userDocUpdated.usageCount}/${usageLimit}`);
+
+
  console.log("🟢 【途中希望】ブロックに入りました:", userInput);
 
   const previous = sessionStore[userId];
@@ -713,6 +664,71 @@ sessionStore[userId] = {
 
 // ✅ 完全版「違う店」修正版コード
 if ((userInput.includes("違う") || userInput.includes("他")) && sessionStore[userId]) {
+  // 🔥【利用回数カウント】（各ブロックの先頭に入れる）
+await userDB.updateOne(
+  { userId },
+  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+);
+
+const userDocUpdated = await userDB.findOne({ userId });
+
+let usageLimit = 1; // 無料ユーザーのデフォルト値
+if (userDocUpdated.subscribed) {
+  switch (userDocUpdated.planId) {
+    case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
+      usageLimit = 20;
+      break;
+    case "price_1RgOITCE2c7uO9vor59pbAx2":
+      usageLimit = 40;
+      break;
+    case "price_1RgOJzCE2c7uO9voM5P9BmIH":
+      usageLimit = Infinity;
+      break;
+  }
+}
+
+// 利用上限を超えた場合の処理
+if (userDocUpdated.usageCount > usageLimit) {
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "ベーシック（月500円・20回）",
+            data: "action=selectPlan&plan=basic",
+            displayText: "ベーシックプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "スタンダード（月1000円・40回）",
+            data: "action=selectPlan&plan=standard",
+            displayText: "スタンダードプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "プレミアム（月2000円・無制限）",
+            data: "action=selectPlan&plan=premium",
+            displayText: "プレミアムプランを選択"
+          }
+        }
+      ]
+    }
+  });
+  return;
+}
+
+console.log(`🟢 利用回数: ${userDocUpdated.usageCount}/${usageLimit}`);
+
   const previous = sessionStore[userId];
   const remaining = previous.allShops.filter(s => !previous.shown.includes(s.name));
 
@@ -848,9 +864,74 @@ ${shopList}`;
   });
 }
 
-
+if (!sessionStore[userId]) {
 
 // ✅ 通常の初回検索リクエスト（場所＋ジャンル＋キーワードを柔軟に対応）
+// 🔥【利用回数カウント】（各ブロックの先頭に入れる）
+await userDB.updateOne(
+  { userId },
+  { $inc: { usageCount: 1 }, $set: { updatedAt: new Date() } }
+);
+
+const userDocUpdated = await userDB.findOne({ userId });
+
+let usageLimit = 1; // 無料ユーザーのデフォルト値
+if (userDocUpdated.subscribed) {
+  switch (userDocUpdated.planId) {
+    case "price_1Rc4DbCE2c7uO9vomtr7CWPk":
+      usageLimit = 20;
+      break;
+    case "price_1RgOITCE2c7uO9vor59pbAx2":
+      usageLimit = 40;
+      break;
+    case "price_1RgOJzCE2c7uO9voM5P9BmIH":
+      usageLimit = Infinity;
+      break;
+  }
+}
+
+// 利用上限を超えた場合の処理
+if (userDocUpdated.usageCount > usageLimit) {
+  await client.replyMessage(event.replyToken, {
+    type: "text",
+    text: "🔒 月間の利用回数を超えました。ご希望のプランをお選びください。",
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "ベーシック（月500円・20回）",
+            data: "action=selectPlan&plan=basic",
+            displayText: "ベーシックプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "スタンダード（月1000円・40回）",
+            data: "action=selectPlan&plan=standard",
+            displayText: "スタンダードプランを選択"
+          }
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "プレミアム（月2000円・無制限）",
+            data: "action=selectPlan&plan=premium",
+            displayText: "プレミアムプランを選択"
+          }
+        }
+      ]
+    }
+  });
+  return;
+}
+
+console.log(`🟢 利用回数: ${userDocUpdated.usageCount}/${usageLimit}`);
+
 const gptExtractInitial  = await openai.chat.completions.create({
   model: "gpt-4",
   messages: [
@@ -1024,45 +1105,45 @@ sessionStore[userId] = {
       }
 
     // 🔥 作業４（今回追加したpostback処理）
- else if (event.type === "postback") {
-  const replyToken = event.replyToken;
-  const postbackData = new URLSearchParams(event.postback.data);
+       }  else if (event.type === "postback") {
+        const replyToken = event.replyToken;
+        const postbackData = new URLSearchParams(event.postback.data);
 
-  if (postbackData.get("action") === "selectPlan") {
-    const planKey = postbackData.get("plan");
-    const userId = event.source.userId;  // userId を取得（重要）
-      const userDoc = await userDB.findOne({ userId });
+        if (postbackData.get("action") === "selectPlan") {
+          const planKey = postbackData.get("plan");
+          const userId = event.source.userId;
+          const userDoc = await userDB.findOne({ userId });
 
-    try {
-      // 🔥 ExpressサーバーのAPIを呼んで動的に決済リンクを生成
-      const response = await axios.post(
-        "https://line-gourmet-bot.onrender.com/create-checkout-session",
-        { userId, plan: planKey } // userIdとプランを送信
-      );
+          try {
+            const response = await axios.post(
+              "https://line-gourmet-bot.onrender.com/create-checkout-session",
+              { userId, plan: planKey }
+            );
 
-      const sessionUrl = response.data.url; // Expressからの動的リンク
+            const sessionUrl = response.data.url;
 
-      await client.replyMessage(replyToken, {
-        type: "text",
-        text: `✅ 選択されたプランの登録・変更はこちらからお手続きください。\n${sessionUrl}`
-      });
+            await client.replyMessage(replyToken, {
+              type: "text",
+              text: `✅ 選択されたプランの登録・変更はこちらからお手続きください。\n${sessionUrl}`
+            });
 
-    } catch (err) {
-      console.error("❌ Checkout Session作成エラー:", err);
-      await client.replyMessage(replyToken, {
-        type: "text",
-        text: "⚠️ 決済リンクの作成中にエラーが発生しました。再度お試しください。"
-      });
-    }
+          } catch (err) {
+            console.error("❌ Checkout Session作成エラー:", err);
+            await client.replyMessage(replyToken, {
+              type: "text",
+              text: "⚠️ 決済リンクの作成中にエラーが発生しました。再度お試しください。"
+            });
+          }
 
-    return;
-  }
-}
-   }));
-       res.status(200).end(); // LINEへの正常レスポンス
-  } catch (err) { // tryブロック終了＆catch開始
+          return;
+        }
+      } // ← else if (event.type === "postback") ブロック終了のカッコ
+ })); // ← events.map の終了位置（ここに設置することが最重要）
+
+    res.status(200).end(); // LINEへの正常レスポンスを返す（ここが正常な位置）
+
+  } catch (err) { // tryブロック終了＆catch開始位置（ここが正常な位置）
     console.error("❌ webhookエラー:", err);
     res.status(500).end();
-  } // catch終了
-}); 
-   
+  } // catchブロックの終了位置（ここが正常な位置）
+}); // app.post("/webhook")の終了位置（ここが正常な位置）
